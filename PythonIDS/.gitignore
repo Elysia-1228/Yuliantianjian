@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+python/venv/
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+*.swp
+
+# Logs
+*.log
+Snort/alerts.log
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Project specific generated files
+evaluation_results/

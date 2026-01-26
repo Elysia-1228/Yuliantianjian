@@ -1,0 +1,422 @@
+/* PIDS Graph - ECharts树状图样式 */
+
+.graphContainer {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 500px;
+  background: 
+    linear-gradient(rgba(0, 229, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 229, 255, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  background-position: center center;
+  border-radius: 12px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+/* 全屏模式 */
+.graphContainer.fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9999;
+  border-radius: 0;
+  background: linear-gradient(135deg, #0a0e1a 0%, #1a1f2e 100%);
+}
+
+/* 缩放控制器 */
+.zoomControls {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 1000;
+  background: rgba(5, 11, 20, 0.9);
+  border: 1px solid rgba(0, 229, 255, 0.5);
+  border-radius: 8px;
+  padding: 8px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 0 20px rgba(0, 229, 255, 0.3);
+}
+
+.zoomButton {
+  width: 36px;
+  height: 36px;
+  background: rgba(0, 229, 255, 0.1);
+  border: 1px solid #00e5ff;
+  border-radius: 6px;
+  color: #00e5ff;
+  font-size: 20px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.zoomButton:hover {
+  background: rgba(0, 229, 255, 0.2);
+  box-shadow: 0 0 10px rgba(0, 229, 255, 0.5);
+  transform: scale(1.05);
+}
+
+.zoomButton:active {
+  transform: scale(0.95);
+}
+
+.zoomLevel {
+  text-align: center;
+  color: #00e5ff;
+  font-size: 12px;
+  font-weight: bold;
+  padding: 4px 0;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.graphContainer::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 0%, rgba(5, 11, 20, 0.8) 100%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.hudFrame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  padding: 2px;
+}
+
+/* HUD角标装饰 */
+.hudCorner {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.hudCorner::before,
+.hudCorner::after {
+  content: '';
+  position: absolute;
+  background: #00e5ff;
+  box-shadow: 0 0 8px #00e5ff, 0 0 16px rgba(0, 229, 255, 0.5);
+}
+
+.hudCorner.topLeft {
+  top: 0;
+  left: 0;
+}
+.hudCorner.topLeft::before {
+  top: 0;
+  left: 0;
+  width: 24px;
+  height: 2px;
+}
+.hudCorner.topLeft::after {
+  top: 0;
+  left: 0;
+  width: 2px;
+  height: 24px;
+}
+
+.hudCorner.topRight {
+  top: 0;
+  right: 0;
+}
+.hudCorner.topRight::before {
+  top: 0;
+  right: 0;
+  width: 24px;
+  height: 2px;
+}
+.hudCorner.topRight::after {
+  top: 0;
+  right: 0;
+  width: 2px;
+  height: 24px;
+}
+
+.hudCorner.bottomLeft {
+  bottom: 0;
+  left: 0;
+}
+.hudCorner.bottomLeft::before {
+  bottom: 0;
+  left: 0;
+  width: 24px;
+  height: 2px;
+}
+.hudCorner.bottomLeft::after {
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  height: 24px;
+}
+
+.hudCorner.bottomRight {
+  bottom: 0;
+  right: 0;
+}
+.hudCorner.bottomRight::before {
+  bottom: 0;
+  right: 0;
+  width: 24px;
+  height: 2px;
+}
+.hudCorner.bottomRight::after {
+  bottom: 0;
+  right: 0;
+  width: 2px;
+  height: 24px;
+}
+
+/* 扫描线动画 */
+.scanLine {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #00e5ff, transparent);
+  opacity: 0.6;
+  animation: scanDown 4s linear infinite;
+  pointer-events: none;
+  z-index: 5;
+}
+
+@keyframes scanDown {
+  0% { top: 0; opacity: 0; }
+  10% { opacity: 0.6; }
+  90% { opacity: 0.6; }
+  100% { top: 100%; opacity: 0; }
+}
+
+/* 中心脉冲动画 - 用于风险球 */
+.riskPulse {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 77, 79, 0.4) 0%, transparent 70%);
+  animation: pulse 2s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.8; }
+  50% { transform: translate(-50%, -50%) scale(1.5); opacity: 0.3; }
+}
+
+/* 图谱画布 */
+.g6Canvas {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+}
+
+/* 节点标签样式 */
+.nodeLabel {
+  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
+  font-size: 12px;
+  fill: #ffffff;
+  text-shadow: none;
+  pointer-events: none;
+}
+
+/* 加载状态 */
+.loadingOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 11, 20, 0.9);
+  z-index: 100;
+}
+
+.loadingSpinner {
+  width: 48px;
+  height: 48px;
+  border: 3px solid rgba(0, 229, 255, 0.2);
+  border-top-color: #00e5ff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loadingText {
+  margin-top: 16px;
+  color: #94a3b8;
+  font-size: 14px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* 提示文字 */
+.hintText {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: rgba(148, 163, 184, 0.7);
+  font-size: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  text-align: center;
+  z-index: 10;
+  pointer-events: none;
+  animation: blink 2s ease-in-out infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 0.3; }
+}
+
+/* 图例 */
+.legend {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  background: rgba(20, 30, 40, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 12px;
+  z-index: 20;
+}
+
+.legendTitle {
+  font-size: 10px;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: #94a3b8;
+  margin-bottom: 6px;
+}
+
+.legendItem:last-child {
+  margin-bottom: 0;
+}
+
+.legendIcon {
+  width: 16px;
+  height: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.legendRect {
+  width: 14px;
+  height: 10px;
+  background: rgba(255, 77, 79, 0.15);
+  border: 1.5px solid #ff4d4f;
+  border-radius: 2px;
+}
+
+.legendEllipse {
+  width: 14px;
+  height: 10px;
+  background: rgba(0, 229, 255, 0.15);
+  border: 1.5px solid #00e5ff;
+  border-radius: 50%;
+}
+
+.legendDiamond {
+  width: 10px;
+  height: 10px;
+  background: rgba(255, 193, 7, 0.2);
+  border: 1.5px solid #ffc107;
+  transform: rotate(45deg);
+}
+
+/* 状态标签 */
+.stageLabel {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  background: rgba(255, 77, 79, 0.2);
+  border: 1px solid rgba(255, 77, 79, 0.5);
+  color: #ff4d4f;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  padding: 4px 12px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  z-index: 20;
+}
+
+.stageLabel.micro {
+  background: rgba(0, 229, 255, 0.2);
+  border-color: rgba(0, 229, 255, 0.5);
+  color: #00e5ff;
+}
+
+/* 信息面板 */
+.infoPanel {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: rgba(20, 30, 40, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 12px 16px;
+  min-width: 200px;
+  z-index: 20;
+}
+
+.infoPanelTitle {
+  font-size: 12px;
+  color: #00e5ff;
+  font-weight: 600;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.infoPanelRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+
+.infoPanelLabel {
+  color: #64748b;
+}
+
+.infoPanelValue {
+  color: #ffffff;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.infoPanelValue.danger {
+  color: #ff4d4f;
+}

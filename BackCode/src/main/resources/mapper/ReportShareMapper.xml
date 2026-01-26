@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yukasl.backcode.mapper.ReportShareMapper">
+    <select id="queryReportShare" resultType="com.yukasl.backcode.pojo.entity.reportShare">
+        select * from report_share
+        <where>
+            <if test="reportId != null">
+                and report_id like concat("%", #{reportId}, "%")
+            </if>
+            <if test="sharedOrgId != null">
+                and shared_org_id like concat("%", #{sharedOrgId}, "%")
+            </if>
+            <if test="shareStatus != null">
+                and share_status = #{shareStatus}
+            </if>
+        </where>
+        order by create_time desc
+    </select>
+
+    <select id="queryLatestReportShare" resultType="com.yukasl.backcode.pojo.entity.reportShare">
+        select id
+        from report_share
+        WHERE id = LAST_INSERT_ID()
+    </select>
+</mapper>

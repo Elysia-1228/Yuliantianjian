@@ -1,0 +1,28 @@
+server:
+  port: 8986
+
+fabric:
+  # ✅ 路径配置优化：自动适配同级部署
+  # 如果在本地IDE运行，请确保 Zhilian_Install_Package 在项目根目录的同级或子级
+  
+  # 连接配置文件
+  networkConfigPath: ./Zhilian_Install_Package/fabric-network/organizations/peerOrganizations/org1.example.com/connection-org1.yaml
+  
+  # 用户证书
+  certificatePath: ./Zhilian_Install_Package/fabric-network/organizations/peerOrganizations/org1.example.com/users/User1@org1.example.com/msp/signcerts/User1@org1.example.com-cert.pem
+  
+  # 私钥目录
+  privateKeyPath: ./Zhilian_Install_Package/fabric-network/organizations/peerOrganizations/org1.example.com/users/User1@org1.example.com/msp/keystore/
+  
+  mspid: Org1MSP
+  username: User1
+  channelName: mychannel
+  contractName: evidence
+
+otel:
+  traces:
+    exporter: none
+  metrics:
+    exporter: none
+  logs:
+    exporter: none

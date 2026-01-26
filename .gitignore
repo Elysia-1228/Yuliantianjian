@@ -1,0 +1,125 @@
+# ==========================================
+# Global / OS / IDE
+# ==========================================
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.log
+*.tmp
+
+# ==========================================
+# Python Modules (PythonIDS)
+# ==========================================
+PythonIDS/__pycache__/
+PythonIDS/*.py[cod]
+PythonIDS/*$py.class
+PythonIDS/venv/
+PythonIDS/.venv/
+PythonIDS/env/
+PythonIDS/.env
+PythonIDS/logs/
+PythonIDS/*.pcap
+PythonIDS/*.pcapng
+PythonIDS/Snort/*.pcap
+PythonIDS/anomaly_based_ids/preprocessed_data/
+PythonIDS/anomaly_based_ids/transec_gan_model/
+PythonIDS/anomaly_based_ids/ids_detection.log
+PythonIDS/alert_gateway/alerts.log
+PythonIDS/alert_gateway/alert_gateway/alerts.log
+PythonIDS/**/*.npy
+PythonIDS/**/*.pkl
+PythonIDS/**/*.pth
+PythonIDS/**/*.h5
+# Exclude large training data (>50MB) to prevent Git push errors
+PythonIDS/**/X_train.npy
+PythonIDS/**/X_test.npy
+# Allow runtime-critical model files (small enough for GitHub)
+!PythonIDS/**/best_model_4x5880_max.pth
+!PythonIDS/**/pca.pkl
+!PythonIDS/**/scaler.pkl
+!PythonIDS/**/label_encoder.npy
+# Keep specific model files if they are small and necessary, otherwise ignore large binaries
+
+# ==========================================
+# Java / Spring Boot (BackCode & Backen)
+# ==========================================
+# Maven
+**/target/
+**.mvn/
+**/mvnw
+**/mvnw.cmd
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+release.properties
+
+# Gradle
+**/.gradle/
+**/build/
+**/gradlew
+**/gradlew.bat
+
+# Java compiled class files
+**/*.class
+
+# Package Files
+**/*.jar
+**/*.war
+**/*.nar
+**/*.ear
+**/*.zip
+**/*.tar.gz
+**/*.rar
+
+# Logs
+**/logs/
+**/*.log
+
+# ==========================================
+# Node.js / Frontend (FrontCode)
+# ==========================================
+FrontCode/node_modules/
+FrontCode/dist/
+FrontCode/build/
+FrontCode/coverage/
+FrontCode/.env
+FrontCode/.env.local
+FrontCode/.env.development.local
+FrontCode/.env.test.local
+FrontCode/.env.production.local
+FrontCode/npm-debug.log*
+FrontCode/yarn-debug.log*
+FrontCode/yarn-error.log*
+FrontCode/pnpm-debug.log*
+
+# ==========================================
+# Hyperledger Fabric (Backen/chaincode)
+# ==========================================
+# Wallets and crypto material (security risk if committed)
+**/wallet/
+**/keystore/
+**/crypto-config/
+**/channel-artifacts/
+**/*.block
+**/*.tx
+
+# ==========================================
+# Specific Project Files to Ignore
+# ==========================================
+# Temporary documentation or analysis files (optional, depending on preference)
+# project_analysis.md (User asked to keep this, so do NOT ignore)
+temp/
+backup/
+
+# Install Package (Generated Artifact)
+Zhilian_Install_Package/
+
+# Dynamic Lists (Runtime generated)
+blocked_ips.json
+trusted_ips.json

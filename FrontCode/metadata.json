@@ -1,0 +1,5 @@
+{
+  "name": "SentinelGuard - Cyber Threat Intelligence Platform",
+  "description": "A comprehensive Cyber Threat Intelligence and Security Management System featuring data collection, threat analysis, visual tracing, HIDS monitoring, and organization management. Built with React, Tailwind CSS, and Recharts.",
+  "requestFramePermissions": []
+}

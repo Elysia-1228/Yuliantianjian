@@ -1,0 +1,22 @@
+{
+  "name": "zhilian-security-platform",
+  "version": "1.0.0",
+  "description": "御链天鉴 - 网络安全智能分析及溯源系统",
+  "scripts": {
+    "start": "concurrently -n \"backend,frontend\" -c \"blue,green\" \"npm run backend\" \"npm run frontend\"",
+    "frontend": "cd FrontCode && npm run dev",
+    "backend": "cd BackCode && C:\\apache-maven-3.9.6\\bin\\mvn.cmd spring-boot:run -DskipTests",
+    "install:all": "cd FrontCode && npm install",
+    "build": "cd FrontCode && npm run build"
+  },
+  "keywords": [
+    "security",
+    "threat-analysis",
+    "network-security"
+  ],
+  "author": "Zhilian Team",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

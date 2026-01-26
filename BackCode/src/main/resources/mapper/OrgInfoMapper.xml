@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yukasl.backcode.mapper.OrgInfoMapper">
+    <select id="queryOrgInfo" resultType="com.yukasl.backcode.pojo.entity.orgInfo">
+        select * from org_info
+        <where>
+            <if test="orgName != null">
+                and org_name like concat("%", #{orgName}, "%")
+            </if>
+            <if test="adminPermission != null">
+                and admin_permission = #{adminPermission}
+            </if>
+        </where>
+        order by create_time desc
+    </select>
+
+    <update id="updateOrgInfo">
+        update org_info
+        <set>
+            <if test="orgInfoDTO.orgName != null">
+                org_name = #{orgInfoDTO.orgName},
+            </if>
+            <if test="orgInfoDTO.maxMemberCount != null">
+                max_member_count = #{orgInfoDTO.maxMemberCount},
+            </if>
+            <if test="orgInfoDTO.adminPermission != null">
+                admin_permission = #{orgInfoDTO.adminPermission}
+            </if>
+        </set>
+        where id = #{id}
+    </update>
+
+    <select id="queryLatestOrgInfo" resultType="com.yukasl.backcode.pojo.entity.orgInfo">
+        select id, org_id
+        from org_info
+        WHERE id = LAST_INSERT_ID()
+    </select>
+</mapper>

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yukasl.backcode.mapper.ReportConfigMapper">
+    <select id="getByDTO" resultType="com.yukasl.backcode.pojo.entity.threatReportConfig">
+        select * from threat_report_config
+        <where>
+            <if test="reportType != null and reportType != ''">
+                and report_type like concat("%",#{reportType},"%")
+            </if>
+            <if test="reportStatus != null">
+                and report_status = #{reportStatus}
+            </if>
+            <if test="startTime != null">
+                and start_time &gt;= #{startTime}
+            </if>
+            <if test="endTime != null">
+                and end_time &lt;= #{endTime}
+            </if>
+        </where>
+    </select>
+
+    <insert id="add" keyProperty="id" useGeneratedKeys="true">
+        INSERT INTO threat_report_config (report_type,
+                                          report_status,
+                                          start_time,
+                                          end_time,
+                                          create_time,
+                                          update_time)
+        VALUES (#{reportType},
+                #{reportStatus},
+                #{startTime},
+                #{endTime},
+                #{createTime},
+                #{updateTime})
+    </insert>
+
+    <select id="getById" resultType="com.yukasl.backcode.pojo.VO.ReportStatusVO">
+        select *
+        from threat_report_config
+        where id = #{id}
+    </select>
+</mapper>

@@ -1,0 +1,13 @@
+safe:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver  # 正确的MySQL 8+驱动
+    host: localhost
+    port: 3306
+    database: net_safe  # 数据库名称
+    username: root
+    password: z2392099751
+redis:
+    host: localhost
+    port: 6379
+    password: root
+    database: 1

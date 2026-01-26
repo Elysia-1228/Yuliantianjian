@@ -1,0 +1,51 @@
+1.HTTP SQL 注入检测（sid 100001, 100002）
+
+	匹配 union select、or '1'='1' 等典型 SQLi payload 出现在 HTTP 请求中，端口限制为 80。
+
+	适合配合 Web 服务器流量做教学演示。
+
+2.HTTP XSS 检测（sid 100003）
+
+	payload 中出现 <script，说明可能是跨站脚本注入。
+
+	可以配合简单的 HTML 测试页面生成 payload 看 alert。
+
+3.后台管理 / 敏感文件访问（sid 100004, 100005）
+
+	GET /admin 且 dst_ip 在内网网段 192.168.1.0/24，表示外部访问内网后台。
+
+	content 包含 /etc/passwd，表示本地文件包含 / 目录遍历攻击趋势。
+
+4.恶意域名的 DNS 查询（sid 100010, 100011）
+
+	匹配 DNS 查询中包含 evil-domain.com、badcnc.example 等字符串，可以模拟 C2 域名检测。
+
+5.SSH 登录与暴力破解（sid 100020, 100021）
+
+	端口 22 上出现 SSH-2.0 视为 SSH 连接建立。
+
+	payload 中出现 password 时标记为可能的暴力尝试或错误日志。
+
+6.FTP / Telnet 明文凭证（sid 100030–100041）
+
+	FTP：检测 USER 、PASS 命令，说明使用明文传输账号密码。
+
+	Telnet：检测 login:、Password: 等提示，表明存在明文远程登录。
+
+7.恶意反弹 Shell 特征（sid 100050–100052）
+
+	payload 包含 /bin/sh、nc -e、bash -i 等典型反弹 shell 命令。
+
+	protocol 设置为 any，所有协议都检查 payload。
+
+8.内外网策略规则（sid 100060）
+
+	源地址在 192.168.1.0/24 内网，目标是 10.10.10.0/24 可视为“可疑外部网段”，不依赖端口 / payload。
+
+	主要展示你引擎对 CIDR 子网匹配的能力。
+
+9.ICMP 隧道检测（sid 100070）
+
+	protocol 设置为 ip，不限制 TCP/UDP，仅按 payload 检测 ICMP 里是否有 CONNECT 这样的控制关键字。
+
+	用于演示“非典型隧道流量”的初步检测。

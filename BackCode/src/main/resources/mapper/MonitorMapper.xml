@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yukasl.backcode.mapper.MonitorMapper">
+    <select id="queryHostMonitor" resultType="com.yukasl.backcode.pojo.entity.hostStatusMonitor">
+        select id, host_id, cpu_usage, memory_usage, network_conn, disk_usage, disk_info, file_status, 
+               cpu_model, cpu_cores, cpu_freq, memory_info, memory_total_gb, memory_used_gb, 
+               disk_total_gb, disk_used_gb, disk_free_gb, disk_partitions,
+               monitor_time, create_time 
+        from host_status_monitor
+        <where>
+            <if test="hostId != null">
+                and host_id = #{hostId}
+            </if>
+            <if test="monitorTimeStart != null">
+                and monitor_time >= #{monitorTimeStart}
+            </if>
+            <if test="monitorTimeEnd != null">
+                and #{monitorTimeEnd} >= monitor_time
+            </if>
+        </where>
+        order by create_time desc
+    </select>
+
+    <select id="queryProcessMonitor" resultType="com.yukasl.backcode.pojo.entity.processMonitor">
+        select * from process_monitor
+        <where>
+            <if test="processId != null">
+                and process_id = #{processId}
+            </if>
+            <if test="processName != null">
+                and process_name like concat("%", #{processName}, "%")
+            </if>
+            <if test="processStatus != null">
+                and process_status = #{processStatus}
+            </if>
+        </where>
+        order by create_time desc
+    </select>
+
+    <update id="updateProcessMonitor">
+        update process_monitor
+        <set>
+            <if test="processMonitorDTO.processStatus != null">
+                process_status = #{processMonitorDTO.processStatus},
+            </if>
+            <if test="processMonitorDTO.abnormalReason != null">
+                abnormal_reason = #{processMonitorDTO.abnormalReason},
+            </if>
+        </set>
+        where id = #{id}
+    </update>
+</mapper>

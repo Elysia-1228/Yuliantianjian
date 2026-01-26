@@ -1,0 +1,311 @@
+/* RadarLoading - 雷达扫描动画样式 */
+
+.radar-loading-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at center, rgba(6, 182, 212, 0.05) 0%, transparent 70%);
+  overflow: hidden;
+}
+
+/* 背景网格 */
+.radar-grid {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background-image: 
+    linear-gradient(rgba(6, 182, 212, 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(6, 182, 212, 0.1) 1px, transparent 1px);
+  background-size: 40px 40px;
+  animation: gridPulse 4s ease-in-out infinite;
+}
+
+@keyframes gridPulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.6; }
+}
+
+/* 雷达主体容器 */
+.radar-wrapper {
+  position: relative;
+  width: 280px;
+  height: 280px;
+}
+
+/* 雷达圆圈 */
+.radar-circle {
+  position: absolute;
+  border: 2px solid rgba(6, 182, 212, 0.3);
+  border-radius: 50%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.radar-circle-outer {
+  width: 260px;
+  height: 260px;
+  animation: circleGlow 2s ease-in-out infinite;
+}
+
+.radar-circle-middle {
+  width: 180px;
+  height: 180px;
+  animation: circleGlow 2s ease-in-out infinite 0.3s;
+}
+
+.radar-circle-inner {
+  width: 100px;
+  height: 100px;
+  animation: circleGlow 2s ease-in-out infinite 0.6s;
+}
+
+@keyframes circleGlow {
+  0%, 100% { 
+    border-color: rgba(6, 182, 212, 0.3);
+    box-shadow: 0 0 10px rgba(6, 182, 212, 0.1);
+  }
+  50% { 
+    border-color: rgba(6, 182, 212, 0.6);
+    box-shadow: 0 0 20px rgba(6, 182, 212, 0.3);
+  }
+}
+
+/* 十字准星 */
+.radar-crosshair {
+  position: absolute;
+  background: rgba(6, 182, 212, 0.2);
+}
+
+.radar-crosshair.horizontal {
+  width: 100%;
+  height: 1px;
+  top: 50%;
+  left: 0;
+}
+
+.radar-crosshair.vertical {
+  width: 1px;
+  height: 100%;
+  top: 0;
+  left: 50%;
+}
+
+/* 扫描线 */
+.radar-sweep {
+  position: absolute;
+  width: 50%;
+  height: 50%;
+  top: 50%;
+  left: 50%;
+  transform-origin: 0 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(6, 182, 212, 0.1) 30%,
+    rgba(6, 182, 212, 0.4) 70%,
+    rgba(6, 182, 212, 0.8) 100%
+  );
+  animation: sweep 2s linear infinite;
+  clip-path: polygon(0 0, 100% 0, 100% 100%);
+}
+
+@keyframes sweep {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* 中心点 */
+.radar-center {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: #06b6d4;
+  border-radius: 50%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 
+    0 0 10px #06b6d4,
+    0 0 20px #06b6d4,
+    0 0 30px rgba(6, 182, 212, 0.5);
+  animation: centerPulse 1s ease-in-out infinite;
+}
+
+@keyframes centerPulse {
+  0%, 100% { 
+    transform: translate(-50%, -50%) scale(1);
+    box-shadow: 
+      0 0 10px #06b6d4,
+      0 0 20px #06b6d4,
+      0 0 30px rgba(6, 182, 212, 0.5);
+  }
+  50% { 
+    transform: translate(-50%, -50%) scale(1.2);
+    box-shadow: 
+      0 0 15px #06b6d4,
+      0 0 30px #06b6d4,
+      0 0 45px rgba(6, 182, 212, 0.7);
+  }
+}
+
+/* 扫描到的目标点 */
+.radar-blip {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: #ef4444;
+  border-radius: 50%;
+  box-shadow: 0 0 10px #ef4444;
+  animation: blipFade 2s linear infinite;
+}
+
+.blip-1 {
+  top: 25%;
+  left: 65%;
+  animation-delay: 0s;
+}
+
+.blip-2 {
+  top: 60%;
+  left: 30%;
+  animation-delay: 0.7s;
+}
+
+.blip-3 {
+  top: 40%;
+  left: 75%;
+  animation-delay: 1.4s;
+}
+
+@keyframes blipFade {
+  0% { 
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  20% { 
+    opacity: 1;
+    transform: scale(1.2);
+  }
+  40% {
+    opacity: 0.8;
+    transform: scale(1);
+  }
+  100% { 
+    opacity: 0;
+    transform: scale(0.8);
+  }
+}
+
+/* 文字提示 */
+.radar-text {
+  margin-top: 30px;
+  text-align: center;
+}
+
+.radar-message {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #06b6d4;
+  font-family: 'JetBrains Mono', monospace;
+  text-shadow: 0 0 10px rgba(6, 182, 212, 0.5);
+  animation: textGlow 2s ease-in-out infinite;
+}
+
+.radar-submessage {
+  font-size: 0.875rem;
+  color: #94a3b8;
+  font-family: 'JetBrains Mono', monospace;
+  margin-top: 8px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+@keyframes textGlow {
+  0%, 100% { text-shadow: 0 0 10px rgba(6, 182, 212, 0.5); }
+  50% { text-shadow: 0 0 20px rgba(6, 182, 212, 0.8), 0 0 30px rgba(6, 182, 212, 0.4); }
+}
+
+/* 加载点动画 */
+.radar-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 16px;
+}
+
+.radar-dots .dot {
+  width: 8px;
+  height: 8px;
+  background: #06b6d4;
+  border-radius: 50%;
+  animation: dotBounce 1.4s ease-in-out infinite;
+}
+
+.radar-dots .dot:nth-child(1) { animation-delay: 0s; }
+.radar-dots .dot:nth-child(2) { animation-delay: 0.2s; }
+.radar-dots .dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes dotBounce {
+  0%, 80%, 100% { 
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+  40% { 
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* 状态指示器 */
+.radar-status {
+  position: absolute;
+  bottom: 30px;
+  display: flex;
+  gap: 30px;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.status-dot.active {
+  background: #22c55e;
+  box-shadow: 0 0 8px #22c55e;
+  animation: statusPulse 1s ease-in-out infinite;
+}
+
+.status-dot.processing {
+  background: #eab308;
+  box-shadow: 0 0 8px #eab308;
+  animation: statusPulse 0.5s ease-in-out infinite;
+}
+
+.status-dot.pending {
+  background: #64748b;
+  box-shadow: 0 0 4px #64748b;
+}
+
+@keyframes statusPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.status-label {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 1px;
+}

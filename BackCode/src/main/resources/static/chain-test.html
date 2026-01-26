@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>区块链中间件联调模拟</title>
+  <style>
+    body { font-family: system-ui, Arial; margin: 20px; }
+    h2 { margin-top: 24px; }
+    .card { border: 1px solid #ddd; padding: 16px; border-radius: 8px; margin-bottom: 16px; }
+    label { display: block; margin: 8px 0 4px; }
+    input, textarea, select { width: 100%; padding: 8px; box-sizing: border-box; }
+    button { margin-top: 8px; padding: 8px 16px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .small { font-size: 12px; color: #666; }
+    .resp { white-space: pre-wrap; background: #f7f7f7; padding: 8px; border-radius: 4px; margin-top: 8px; }
+  </style>
+  <script>
+    async function postJSON(path, payload) {
+      try {
+        const res = await fetch('http://localhost:8080' + path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-API-KEY': 'secret-api-key' },
+          body: JSON.stringify(payload)
+        });
+        return '已发送';
+      } catch (e) {
+        return '发送失败: ' + e.message;
+      }
+    }
+    async function sendOrg() {
+      const payload = {
+        orgId: document.getElementById('orgId').value,
+        orgName: document.getElementById('orgName').value,
+        adminPermission: parseInt(document.getElementById('adminPermission').value || '0')
+      };
+      document.getElementById('orgResp').textContent = await postJSON('/api/chain/org', payload);
+    }
+    async function sendAlert() {
+      const payload = {
+        collectedDataId: parseInt(document.getElementById('collectedDataId').value || '0'),
+        reportFile: document.getElementById('reportFile').value,
+        uploadProgress: 100,
+        uploadResult: 1
+      };
+      document.getElementById('alertResp').textContent = await postJSON('/api/chain/alert', payload);
+    }
+    async function sendTraffic() {
+      const payload = JSON.parse(document.getElementById('trafficJson').value || '{}');
+      document.getElementById('trafficResp').textContent = await postJSON('/api/chain/traffic', payload);
+    }
+    async function sendReport() {
+      const payload = {
+        reportId: parseInt(document.getElementById('reportId').value || '0'),
+        reportType: document.getElementById('reportType').value,
+        startTime: document.getElementById('startTime').value,
+        endTime: document.getElementById('endTime').value,
+        reportUrl: document.getElementById('reportUrl').value
+      };
+      document.getElementById('reportResp').textContent = await postJSON('/api/chain/report', payload);
+    }
+    async function sendTrace() {
+      const payload = {
+        threatSource: document.getElementById('threatSource').value,
+        maliciousIp: document.getElementById('maliciousIp').value,
+        attackCmd: document.getElementById('attackCmd').value,
+        malwareOrigin: document.getElementById('malwareOrigin').value,
+        attackPath: document.getElementById('attackPath').value,
+        flowCharm: document.getElementById('flowCharm').value
+      };
+      document.getElementById('traceResp').textContent = await postJSON('/api/chain/trace', payload);
+    }
+  </script>
+  </head>
+<body>
+  <h1>区块链中间件联调模拟页面（发送到 http://localhost:8080/api/chain/...）</h1>
+  <div class="card">
+    <h2>/api/chain/org</h2>
+    <div class="row">
+      <div>
+        <label>orgId</label>
+        <input id="orgId" value="ORG-TEST123" />
+      </div>
+      <div>
+        <label>orgName</label>
+        <input id="orgName" value="测试组织" />
+      </div>
+    </div>
+    <label>adminPermission</label>
+    <select id="adminPermission"><option value="0">0</option><option value="1">1</option></select>
+    <button onclick="sendOrg()">发送</button>
+    <div id="orgResp" class="resp"></div>
+  </div>
+
+  <div class="card">
+    <h2>/api/chain/alert</h2>
+    <div class="row">
+      <div>
+        <label>collectedDataId</label>
+        <input id="collectedDataId" value="1" />
+      </div>
+      <div>
+        <label>reportFile</label>
+        <input id="reportFile" value="/path/to/file.pdf" />
+      </div>
+    </div>
+    <div class="small">uploadProgress 固定 100，uploadResult 固定 1</div>
+    <button onclick="sendAlert()">发送</button>
+    <div id="alertResp" class="resp"></div>
+  </div>
+
+  <div class="card">
+    <h2>/api/chain/traffic</h2>
+    <label>JSON</label>
+    <textarea id="trafficJson" rows="6">{ "attackType": "DDoS", "sourceIp": "1.2.3.4", "targetIp": "5.6.7.8", "statTime": "2025-11-28T10:00:00Z", "attackCount": 42 }</textarea>
+    <button onclick="sendTraffic()">发送</button>
+    <div id="trafficResp" class="resp"></div>
+  </div>
+
+  <div class="card">
+    <h2>/api/chain/report</h2>
+    <div class="row">
+      <div>
+        <label>reportId</label>
+        <input id="reportId" value="1001" />
+      </div>
+      <div>
+        <label>reportType</label>
+        <input id="reportType" value="daily" />
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>startTime</label>
+        <input id="startTime" value="2025-11-28T00:00:00Z" />
+      </div>
+      <div>
+        <label>endTime</label>
+        <input id="endTime" value="2025-11-28T23:59:59Z" />
+      </div>
+    </div>
+    <label>reportUrl</label>
+    <input id="reportUrl" value="https://example.com/report/1001.pdf" />
+    <button onclick="sendReport()">发送</button>
+    <div id="reportResp" class="resp"></div>
+  </div>
+
+  <div class="card">
+    <h2>/api/chain/trace</h2>
+    <div class="row">
+      <div>
+        <label>threatSource</label>
+        <input id="threatSource" value="APT-X" />
+      </div>
+      <div>
+        <label>maliciousIp</label>
+        <input id="maliciousIp" value="9.9.9.9" />
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>attackCmd</label>
+        <input id="attackCmd" value="/bin/bash -c ..." />
+      </div>
+      <div>
+        <label>malwareOrigin</label>
+        <input id="malwareOrigin" value="github.com/example" />
+      </div>
+    </div>
+    <label>attackPath</label>
+    <input id="attackPath" value="host->gateway->db" />
+    <label>flowCharm</label>
+    <input id="flowCharm" value="diagram://id123" />
+    <button onclick="sendTrace()">发送</button>
+    <div id="traceResp" class="resp"></div>
+  </div>
+
+</body>
+</html>

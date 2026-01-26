@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yukasl.backcode.mapper.CollectionHostMapper">
+    <insert id="addHostByCollectionHost" keyProperty="id" useGeneratedKeys="true">
+        insert into network_threat_collection_host(host_ip, collect_freq, collect_status, error_msg, create_time,
+                                                   update_time)
+        VALUES (#{hostIp}, #{collectFreq}, #{collectStatus}, #{errorMsg}, #{createTime}, #{updateTime})
+    </insert>
+
+    <select id="getByCollectionHost" resultType="com.yukasl.backcode.pojo.entity.networkThreatCollectionHost">
+        select * from network_threat_collection_host
+        <where>
+            <if test="hostIp != null || hostIp = ''">
+                and host_ip like concat("%",#{hostIp},"%")
+            </if>
+            <if test="collectStatus != null">
+                and collect_status = #{collectStatus}
+            </if>
+        </where>
+    </select>
+
+    <update id="updateByCollectionHost">
+        update network_threat_collection_host
+        <set>
+            <if test="collectionHost.collectFreq !=null">
+                collect_freq = #{collectionHost.collectFreq},
+            </if>
+            <if test="collectionHost.collectStatus != null">
+                collect_status = #{collectionHost.collectStatus},
+            </if>
+            <if test="collectionHost.updateTime != null">
+                update_time = #{collectionHost.updateTime},
+            </if>
+        </set>
+        where id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        delete
+        from network_threat_collection_host
+        where id = #{id}
+    </delete>
+
+    <select id="queryApiById" resultType="com.yukasl.backcode.pojo.entity.networkThreatCollectionApi">
+        select *
+        from network_threat_collection_api
+        where id = #{id}
+    </select>
+
+    <update id="updateApi">
+        update network_threat_collection_api
+        <set>
+            <if test="apiKey != null and apiKey != ''">
+                api_key = #{ApiKey},
+            </if>
+            <if test="apiSecret != null and apiSecret != ''">
+                api_secret = #{ApiSecret},
+            </if>
+            <if test="syncStatus != null">
+                sync_status = #{syncStatus},
+            </if>
+            <if test="createTime != null">
+                create_time = #{createTime},
+            </if>
+            <if test="updateTime != null">
+                update_time = #{updateTime},
+            </if>
+        </set>
+        where id = #{id}
+    </update>
+</mapper>

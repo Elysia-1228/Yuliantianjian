@@ -1,0 +1,81 @@
+server:
+  port: 8985
+
+spring:
+  # 文件上传配置
+  servlet:
+    multipart:
+      enabled: true # 启用文件上传
+      max-file-size: 10MB # 单个文件最大限制（根据需求调整）
+      max-request-size: 50MB # 单次请求最大文件总大小（根据需求调整）
+      file-size-threshold: 2KB # 超过该大小的文件会写入磁盘（否则存在内存）
+#时间格式化 -- 不生效已经弃用
+#  jackson:
+#    date-format: yyyy-MM-dd HH:mm:ss
+#    time-zone: GMT+8
+  profiles:
+    active: dev
+  main:
+    allow-circular-references: true
+  sql:
+    init:
+      mode: never # 禁用schema.sql初始化，使用netsafe数据库
+  datasource:
+      driver-class-name: ${safe.datasource.driver-class-name}
+      url: jdbc:mysql://${safe.datasource.host}:${safe.datasource.port}/${safe.datasource.database}?serverTimezone=Asia/Shanghai&useUnicode=true&characterEncoding=utf-8&zeroDateTimeBehavior=convertToNull&useSSL=false&allowPublicKeyRetrieval=true&createDatabaseIfNotExist=true
+      username: ${safe.datasource.username}
+      password: ${safe.datasource.password}
+      type: com.alibaba.druid.pool.DruidDataSource  # 指定使用Druid数据源
+  # redis:
+  #   host: ${safe.redis.host}
+  #   port: ${safe.redis.port}
+  #   password: ${safe.redis.password}
+  #   database: ${safe.redis.database}
+# 自定义文件上传配置
+file:
+  upload:
+    # 开发环境：相对路径（项目根目录下的 src/main/resources/upload）
+    # 生产环境：需改为外部绝对路径（如 /data/file-upload/）
+    base-path: src/main/resources/upload/
+    allowed-extensions: pdf,csv,json # 允许的文件扩展名
+    allowed-content-types: # 允许的Content-Type（双重验证，更安全）
+      - application/pdf
+      - text/csv
+      - application/json
+      - text/json
+
+mybatis:
+  #mapper配置文件
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.yukasl.backcode.pojo.entity
+  configuration:
+    #开启驼峰命名
+    map-underscore-to-camel-case: true
+
+logging:
+  level:
+    com:
+      yukasl:
+        backcode:
+          mapper: debug  # 正确指向Mapper接口所在包
+          service: info
+          controller: info
+
+yukasl:
+  jwt:
+    # 设置jwt签名加密时使用的秘钥
+    admin-secret-key: VkcxMGVrMXJOVVZXYXpGclZteHJlVlV4VmpCT1VUMDk=
+    # 设置jwt过期时间
+    admin-ttl: 7200000
+    # 设置前端传递过来的令牌名称
+    admin-token-name: token
+
+# 外部服务配置
+external:
+  ai-service:
+    url: ${AI_SERVICE_URL:http://10.138.50.151:8000/api/chat}
+  ai-engine:
+    url: ${AI_ENGINE_URL:http://10.138.50.151:5000/predict}
+  blockchain-gateway:
+    url: ${BLOCKCHAIN_GATEWAY_URL:http://localhost:8986/api/chain/alert}
+

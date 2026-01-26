@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yukasl.backcode.mapper.TracingMapper">
+
+
+    <select id="query" resultType="com.yukasl.backcode.pojo.entity.threatSourceTracing">
+        select id, threat_source, malicious_ip, attack_cmd, malware_origin, attack_path from threat_source_tracing
+        <where>
+            <if test="maliciousIp != null and maliciousIp != ''">
+                and malicious_ip like concat("%",#{maliciousIp},"%")
+            </if>
+            <if test="threatSource != null and threatSource != ''">
+                and threat_source like concat("%",#{threatSource},"%")
+            </if>
+        </where>
+        order by create_time desc
+</select>
+    <insert id="insert" parameterType="com.yukasl.backcode.pojo.entity.threatSourceTracing">
+        insert into threat_source_tracing (threat_source, malicious_ip, attack_cmd, malware_origin, attack_path, flow_charm, create_time)
+        values (#{threatSource}, #{maliciousIp}, #{attackCmd}, #{malwareOrigin}, #{attackPath}, #{flowCharm}, #{createTime})
+    </insert>
+</mapper>

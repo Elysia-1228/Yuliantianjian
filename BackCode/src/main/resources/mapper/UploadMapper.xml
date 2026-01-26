@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yukasl.backcode.mapper.UploadMapper">
+    <insert id="Insert" useGeneratedKeys="true" keyProperty="id">
+        insert into network_threat_upload(report_file, collected_data_id, upload_progress, upload_result, create_time,
+                                          update_time)
+        VALUES (#{reportFile}, #{collectedDataId}, #{uploadProgress}, #{uploadResult}, #{createTime}, #{UpdateTime})
+    </insert>
+
+    <select id="queryById" resultType="com.yukasl.backcode.pojo.VO.QueryUploadVO">
+        select upload_progress, upload_result, report_file, collected_data_id
+        from network_threat_upload
+        where id = #{id}
+    </select>
+</mapper>
