@@ -21,6 +21,7 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
+import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
