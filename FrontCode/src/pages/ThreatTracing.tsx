@@ -215,6 +215,11 @@ interface CyberDetailPanelProps {
 
 const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalAlerts, totalSources }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'threats' | 'targets'>('overview');
+  const [anomalyScore, setAnomalyScore] = useState(0);
+  const [rawVector, setRawVector] = useState<number[]>([]);
+  const [featureGroups, setFeatureGroups] = useState<any>({});
+  const [scanPhase, setScanPhase] = useState(-1);
+  const [visibleCards, setVisibleCards] = useState<string[]>([]);
   
   const threatDistribution = useMemo(() => {
     const dist: Record<string, number> = {};
@@ -226,6 +231,53 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
   }, [aggregation]);
 
   const maxCount = Math.max(...threatDistribution.map(([, c]) => c), 1);
+
+  const FEATURE_GROUPS = [
+    { name: '图结构特征', key: 'graph_structure', baseline: 0.12 },
+    { name: '节点特征', key: 'node', baseline: 0.12 },
+    { name: '边特征', key: 'edge', baseline: 0.12 },
+    { name: '序列特征', key: 'sequence', baseline: 0.10 },
+    { name: '语义特征', key: 'semantic', baseline: 0.10 },
+  ];
+
+  useEffect(() => {
+    const mockScore = 65 + Math.random() * 30;
+    setAnomalyScore(mockScore);
+    
+    const mockVector = Array.from({ length: 130 }, () => Math.random());
+    setRawVector(mockVector);
+    
+    const mockGroups: any = {};
+    FEATURE_GROUPS.forEach(g => {
+      const current = g.baseline * (1 + Math.random() * 3);
+      const deviation = ((current / g.baseline - 1) * 100).toFixed(0);
+      mockGroups[g.key] = {
+        current,
+        baseline: g.baseline,
+        label: current > g.baseline ? `+${deviation}%` : `${deviation}%`
+      };
+    });
+    setFeatureGroups(mockGroups);
+    
+    setScanPhase(0);
+    let row = 0;
+    const scanInterval = setInterval(() => {
+      row++;
+      setScanPhase(row);
+      if (row > 9) {
+        clearInterval(scanInterval);
+        setScanPhase(-1);
+        
+        FEATURE_GROUPS.forEach((g, idx) => {
+          setTimeout(() => {
+            setVisibleCards(prev => [...prev, g.key]);
+          }, idx * 200);
+        });
+      }
+    }, 80);
+    
+    return () => clearInterval(scanInterval);
+  }, [aggregation.sourceIp]);
 
   return (
     <div className="h-full flex flex-col bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 overflow-hidden">
@@ -301,125 +353,93 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
       {/* 内容区域 */}
       <div className="flex-1 overflow-y-auto p-4 bg-slate-800/30 mx-4 mb-4 rounded-b-lg border border-t-0 border-slate-700/50">
         {activeTab === 'overview' && (
-          <div className="space-y-4 animate-fadeIn">
-            {/* 威胁等级 */}
+          <div className="space-y-3 animate-fadeIn">
+            {/* 130维点阵图 */}
             <div className="bg-black/30 rounded-lg p-3 border border-slate-700/50">
-              <div className="text-xs text-slate-500 uppercase tracking-wider mb-2">威胁等级</div>
-              <div className={`text-xl font-black uppercase tracking-wider
-                ${aggregation.severity === 'high' || aggregation.severity === 'critical' || aggregation.severity === '高危'
-                  ? 'text-red-400' : 'text-yellow-400'}`}>
-                {aggregation.severity}
+              <div className="text-xs text-slate-500 uppercase tracking-wider mb-2 flex items-center justify-between">
+                <span>130-DIMENSION FEATURE MAP</span>
+                <span className="text-cyan-400/60">{rawVector.length} dims</span>
               </div>
-              <div className="mt-2 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+              <div 
+                className="grid gap-0.5"
+                style={{ 
+                  gridTemplateColumns: 'repeat(13, 1fr)',
+                  gridTemplateRows: 'repeat(10, 1fr)',
+                  height: '120px'
+                }}
+              >
+                {Array.from({ length: 130 }).map((_, idx) => {
+                  const val = rawVector[idx] || 0;
+                  const row = Math.floor(idx / 13);
+                  const isScanning = scanPhase >= 0 && row === scanPhase;
+                  const isScanned = scanPhase < 0 || row < scanPhase;
+                  const intensity = isScanned ? Math.min(val, 1) : 0;
+                  const hue = intensity > 0.7 ? 0 : intensity > 0.4 ? 30 : 180;
+                  
+                  return (
+                    <div 
+                      key={idx}
+                      className={`rounded-sm transition-all duration-200 ${isScanning ? 'ring-1 ring-cyan-400' : ''}`}
+                      style={{ 
+                        backgroundColor: isScanned 
+                          ? `hsla(${hue}, 70%, 50%, ${Math.max(intensity * 0.8, 0.15)})` 
+                          : 'rgba(30,41,59,0.4)',
+                        boxShadow: isScanning ? '0 0 6px rgba(6,182,212,0.6)' : 
+                                   intensity > 0.7 ? '0 0 3px rgba(239,68,68,0.5)' : 'none'
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 5个特征维度卡片 */}
+            {FEATURE_GROUPS.map(group => {
+              const data = featureGroups[group.key] || { current: 0, baseline: group.baseline, label: '0%' };
+              const ratio = data.current / data.baseline;
+              const isHigh = ratio > 2.5;
+              const isVisible = visibleCards.includes(group.key);
+              const barWidth = Math.min((data.current / 1) * 100, 100);
+              const baselinePos = (data.baseline / 1) * 100;
+              
+              return (
                 <div 
-                  className={`h-full rounded-full transition-all duration-1000 ${
-                    aggregation.severity === 'high' || aggregation.severity === 'critical' || aggregation.severity === '高危'
-                      ? 'bg-gradient-to-r from-red-500 to-orange-500 w-[90%]'
-                      : 'bg-gradient-to-r from-yellow-500 to-amber-500 w-[60%]'
-                  }`}
-                />
-              </div>
-            </div>
-
-            {/* 主要威胁 */}
-            <div className="bg-black/30 rounded-lg p-3 border border-slate-700/50">
-              <div className="text-xs text-slate-500 uppercase tracking-wider mb-2">主要威胁类型</div>
-              <div className="text-base font-bold text-white flex items-center gap-2">
-                <Bug size={16} className="text-red-400" />
-                {aggregation.primaryThreatType}
-              </div>
-            </div>
-
-            {/* 时间范围 */}
-            <div className="bg-black/30 rounded-lg p-3 border border-slate-700/50">
-              <div className="text-xs text-slate-500 uppercase tracking-wider mb-2">攻击时间范围</div>
-              <div className="space-y-1 text-xs font-mono">
-                <div className="flex items-center gap-2 text-green-400">
-                  <span className="w-2 h-2 rounded-full bg-green-500" />
-                  {new Date(aggregation.earliestTime).toLocaleString('zh-CN')}
-                </div>
-                <div className="flex items-center gap-2 text-slate-500 pl-1">↓</div>
-                <div className="flex items-center gap-2 text-red-400">
-                  <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                  {new Date(aggregation.latestTime).toLocaleString('zh-CN')}
-                </div>
-              </div>
-            </div>
-
-            {/* 攻击频率分析 */}
-            <div className="bg-black/30 rounded-lg p-3 border border-slate-700/50">
-              <div className="text-xs text-slate-500 uppercase tracking-wider mb-3">攻击频率分析</div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="text-center">
-                  <div className="text-2xl font-black text-cyan-400 font-mono">{aggregation.count}</div>
-                  <div className="text-xs text-slate-500 mt-1">总攻击次数</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-black text-purple-400 font-mono">
-                    {(() => {
-                      const duration = (new Date(aggregation.latestTime).getTime() - new Date(aggregation.earliestTime).getTime()) / (1000 * 60 * 60);
-                      return duration > 0 ? Math.round(aggregation.count / duration * 10) / 10 : aggregation.count;
-                    })()}
+                  key={group.key} 
+                  className={`bg-black/30 rounded-lg p-3 border border-slate-700/50 transition-all duration-500 ${
+                    isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-8'
+                  } ${isHigh ? 'border-red-500/40 bg-red-950/20' : ''}`}
+                >
+                  <div className="flex items-center justify-between text-xs mb-2">
+                    <span className={`font-medium ${isHigh ? 'text-red-400' : 'text-slate-300'}`}>{group.name}</span>
+                    <span className={`font-mono font-bold ${isHigh ? 'text-red-400' : 'text-cyan-400'}`}>{data.label}</span>
                   </div>
-                  <div className="text-xs text-slate-500 mt-1">次/小时</div>
+                  <div className="relative h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                    <div 
+                      className="absolute top-0 h-full w-0.5 bg-yellow-400 z-10" 
+                      style={{ left: `${baselinePos}%`, boxShadow: '0 0 4px rgba(250,204,21,0.7)' }} 
+                    />
+                    <div 
+                      className={`absolute h-full rounded-full transition-all duration-700 ${
+                        isHigh 
+                          ? 'bg-gradient-to-r from-red-600 via-red-500 to-orange-500' 
+                          : 'bg-gradient-to-r from-cyan-600 via-cyan-500 to-cyan-400'
+                      }`}
+                      style={{ 
+                        width: isVisible ? `${barWidth}%` : '0%', 
+                        boxShadow: isHigh 
+                          ? '0 0 8px rgba(239,68,68,0.7)' 
+                          : '0 0 4px rgba(6,182,212,0.5)' 
+                      }} 
+                    />
+                  </div>
                 </div>
-              </div>
-            </div>
-
-            {/* 攻击向量 */}
-            <div className="bg-black/30 rounded-lg p-3 border border-slate-700/50">
-              <div className="text-xs text-slate-500 uppercase tracking-wider mb-2">攻击向量</div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-400">威胁类型数</span>
-                  <span className="font-mono text-yellow-400 font-bold">{aggregation.threatTypes.length}</span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-400">受影响资产</span>
-                  <span className="font-mono text-purple-400 font-bold">{aggregation.targetIps.length}</span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-400">攻击持续</span>
-                  <span className="font-mono text-orange-400 font-bold">
-                    {(() => {
-                      const duration = (new Date(aggregation.latestTime).getTime() - new Date(aggregation.earliestTime).getTime()) / (1000 * 60 * 60 * 24);
-                      return duration < 1 ? `${Math.round(duration * 24)}小时` : `${Math.round(duration)}天`;
-                    })()}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* 地理位置信息 */}
-            <div className="bg-black/30 rounded-lg p-3 border border-slate-700/50">
-              <div className="text-xs text-slate-500 uppercase tracking-wider mb-2">攻击源信息</div>
-              <div className="space-y-2 text-xs">
-                <div className="flex items-center gap-2">
-                  <Globe size={12} className="text-cyan-400" />
-                  <span className="text-slate-400">IP地址:</span>
-                  <span className="font-mono text-white font-bold">{aggregation.sourceIp}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <MapPin size={12} className="text-green-400" />
-                  <span className="text-slate-400">地理位置:</span>
-                  <span className="text-slate-300">
-                    {aggregation.sourceIp.startsWith('192.168') || aggregation.sourceIp.startsWith('10.') 
-                      ? '内网地址' 
-                      : '海外IP'}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Activity size={12} className="text-red-400" />
-                  <span className="text-slate-400">威胁状态:</span>
-                  <span className="text-red-400 font-bold">活跃中</span>
-                </div>
-              </div>
-            </div>
+              );
+            })}
           </div>
         )}
 
         {activeTab === 'threats' && (
-          <div className="space-y-2 animate-fadeIn">
+          <div className="space-y-4 animate-fadeIn">
             {threatDistribution.map(([type, count], idx) => (
               <div key={type} className="bg-black/30 rounded-lg p-3 border border-slate-700/50">
                 <div className="flex items-center justify-between mb-2">
