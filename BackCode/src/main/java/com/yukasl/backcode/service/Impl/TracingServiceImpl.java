@@ -355,37 +355,76 @@ public class TracingServiceImpl implements TracingService {
         String lastProcessId = "target_" + targetIp.replace(".", "_");
         
         for (com.yukasl.backcode.pojo.entity.potentialThreatAlert alert : filteredAlerts) {
-            String affectedProcess = alert.getAffectedProcess();
+            String affectedProcessStr = alert.getAffectedProcess();
             String affectedFile = alert.getAffectedFile();
             
             // 跳过没有主机层数据的记录
-            if (affectedProcess == null || affectedProcess.isEmpty()) {
+            if (affectedProcessStr == null || affectedProcessStr.isEmpty()) {
                 continue;
             }
             
-            // 4. 为每个进程创建独立节点（使用进程名称作为ID的一部分，确保去重）
-            String processId = "proc_" + affectedProcess.replace("/", "_").replace(" ", "_").replace("[", "").replace("]", "").replace("\"", "").replace(",", "_");
-            
-            if (!processIdMap.containsKey(affectedProcess)) {
-                ObjectNode processNode = objectMapper.createObjectNode();
-                processNode.put("id", processId);
-                processNode.put("label", affectedProcess);
-                processNode.put("type", "process");
-                processNode.put("description", "受影响进程: " + affectedProcess);
-                nodes.add(processNode);
-                processIdMap.put(affectedProcess, processId);
+            // 🔥 关键修复：解析 JSON 数组字符串（如 ["nginx", "php-fpm", "mysql"]）
+            try {
+                // 解析进程链数组
+                com.fasterxml.jackson.databind.JsonNode processArray = objectMapper.readTree(affectedProcessStr);
                 
-                // 连接到父节点（上一个进程或目标服务器）
-                ObjectNode edge3 = objectMapper.createObjectNode();
-                edge3.put("source", lastProcessId);
-                edge3.put("target", processId);
-                edge3.put("label", "execute");
-                edges.add(edge3);
+                if (processArray.isArray() && processArray.size() > 0) {
+                    // 重置当前链的起点为目标服务器
+                    String currentParent = "target_" + targetIp.replace(".", "_");
+                    
+                    // 遍历进程链中的每个进程
+                    for (int i = 0; i < processArray.size(); i++) {
+                        String processName = processArray.get(i).asText();
+                        
+                        // 为每个进程创建独立节点（使用进程名称作为ID的一部分，确保去重）
+                        String processId = "proc_" + processName.replace("/", "_").replace(" ", "_").replace("-", "_");
+                        
+                        if (!processIdMap.containsKey(processName)) {
+                            ObjectNode processNode = objectMapper.createObjectNode();
+                            processNode.put("id", processId);
+                            processNode.put("label", processName);
+                            processNode.put("type", "process");
+                            processNode.put("description", "进程: " + processName);
+                            nodes.add(processNode);
+                            processIdMap.put(processName, processId);
+                            
+                            // 连接到父节点
+                            ObjectNode edge3 = objectMapper.createObjectNode();
+                            edge3.put("source", currentParent);
+                            edge3.put("target", processId);
+                            edge3.put("label", "execute");
+                            edges.add(edge3);
+                        }
+                        
+                        // 更新父节点为当前进程，用于下一个进程的连接
+                        currentParent = processIdMap.get(processName);
+                    }
+                    
+                    // 记录最后一个进程ID，用于连接文件
+                    lastProcessId = currentParent;
+                }
+            } catch (Exception e) {
+                log.warn("⚠️ 解析进程链失败: {}, 原始数据: {}", e.getMessage(), affectedProcessStr);
+                // 如果解析失败，尝试作为单个进程处理
+                String processId = "proc_" + affectedProcessStr.replace("/", "_").replace(" ", "_").replace("[", "").replace("]", "").replace("\"", "").replace(",", "_");
                 
-                lastProcessId = processId;
-            } else {
-                // 如果进程已存在，更新 lastProcessId 为已存在的进程ID
-                lastProcessId = processIdMap.get(affectedProcess);
+                if (!processIdMap.containsKey(affectedProcessStr)) {
+                    ObjectNode processNode = objectMapper.createObjectNode();
+                    processNode.put("id", processId);
+                    processNode.put("label", affectedProcessStr);
+                    processNode.put("type", "process");
+                    processNode.put("description", "进程: " + affectedProcessStr);
+                    nodes.add(processNode);
+                    processIdMap.put(affectedProcessStr, processId);
+                    
+                    ObjectNode edge3 = objectMapper.createObjectNode();
+                    edge3.put("source", lastProcessId);
+                    edge3.put("target", processId);
+                    edge3.put("label", "execute");
+                    edges.add(edge3);
+                    
+                    lastProcessId = processId;
+                }
             }
             
             // 5. 为每个文件创建独立节点（使用文件名称作为ID的一部分，确保去重）
@@ -397,7 +436,7 @@ public class TracingServiceImpl implements TracingService {
                     fileNode.put("id", fileId);
                     fileNode.put("label", affectedFile);
                     fileNode.put("type", "file");
-                    fileNode.put("description", "受影响文件: " + affectedFile);
+                    fileNode.put("description", "文件: " + affectedFile);
                     nodes.add(fileNode);
                     fileIdMap.put(affectedFile, fileId);
                     
