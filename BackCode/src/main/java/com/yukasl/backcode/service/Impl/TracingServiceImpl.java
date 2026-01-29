@@ -339,10 +339,9 @@ public class TracingServiceImpl implements TracingService {
         edges.add(edge2);
         
         // 🔥 关键修改：只处理当前 sourceIp 的告警记录，并为每个进程/文件创建独立节点
-        java.util.Set<String> addedProcesses = new java.util.HashSet<>();
-        java.util.Set<String> addedFiles = new java.util.HashSet<>();
-        int processIndex = 0;
-        int fileIndex = 0;
+        // 使用 Map 来存储进程名称到节点ID的映射，确保相同进程只创建一个节点
+        java.util.Map<String, String> processIdMap = new java.util.HashMap<>();
+        java.util.Map<String, String> fileIdMap = new java.util.HashMap<>();
         
         // 过滤出属于当前 sourceIp 的告警记录
         List<com.yukasl.backcode.pojo.entity.potentialThreatAlert> filteredAlerts = alerts.stream()
@@ -350,6 +349,10 @@ public class TracingServiceImpl implements TracingService {
             .collect(java.util.stream.Collectors.toList());
         
         log.info("[FILTER] 过滤后属于 {} 的告警记录: {} 条", sourceIp, filteredAlerts.size());
+        
+        // 用于存储进程之间的父子关系
+        java.util.Map<String, String> processParentMap = new java.util.HashMap<>();
+        String lastProcessId = "target_" + targetIp.replace(".", "_");
         
         for (com.yukasl.backcode.pojo.entity.potentialThreatAlert alert : filteredAlerts) {
             String affectedProcess = alert.getAffectedProcess();
@@ -360,56 +363,57 @@ public class TracingServiceImpl implements TracingService {
                 continue;
             }
             
-            // 4. 为每个进程创建独立节点（去重）
-            String processId = "proc_" + processIndex;
-            if (!addedProcesses.contains(affectedProcess)) {
+            // 4. 为每个进程创建独立节点（使用进程名称作为ID的一部分，确保去重）
+            String processId = "proc_" + affectedProcess.replace("/", "_").replace(" ", "_").replace("[", "").replace("]", "").replace("\"", "").replace(",", "_");
+            
+            if (!processIdMap.containsKey(affectedProcess)) {
                 ObjectNode processNode = objectMapper.createObjectNode();
                 processNode.put("id", processId);
                 processNode.put("label", affectedProcess);
                 processNode.put("type", "process");
                 processNode.put("description", "受影响进程: " + affectedProcess);
                 nodes.add(processNode);
-                addedProcesses.add(affectedProcess);
+                processIdMap.put(affectedProcess, processId);
                 
-                // 目标服务器 -> 进程
+                // 连接到父节点（上一个进程或目标服务器）
                 ObjectNode edge3 = objectMapper.createObjectNode();
-                edge3.put("source", "target_" + targetIp.replace(".", "_"));
+                edge3.put("source", lastProcessId);
                 edge3.put("target", processId);
                 edge3.put("label", "execute");
                 edges.add(edge3);
                 
-                processIndex++;
+                lastProcessId = processId;
+            } else {
+                // 如果进程已存在，更新 lastProcessId 为已存在的进程ID
+                lastProcessId = processIdMap.get(affectedProcess);
             }
             
-            // 5. 为每个文件创建独立节点（去重）
+            // 5. 为每个文件创建独立节点（使用文件名称作为ID的一部分，确保去重）
             if (affectedFile != null && !affectedFile.isEmpty()) {
-                String fileId = "file_" + fileIndex;
-                if (!addedFiles.contains(affectedFile)) {
+                String fileId = "file_" + affectedFile.replace("/", "_").replace(" ", "_").replace(".", "_");
+                
+                if (!fileIdMap.containsKey(affectedFile)) {
                     ObjectNode fileNode = objectMapper.createObjectNode();
                     fileNode.put("id", fileId);
                     fileNode.put("label", affectedFile);
                     fileNode.put("type", "file");
                     fileNode.put("description", "受影响文件: " + affectedFile);
                     nodes.add(fileNode);
-                    addedFiles.add(affectedFile);
+                    fileIdMap.put(affectedFile, fileId);
                     
-                    // 进程 -> 文件（连接到最后一个进程）
-                    if (processIndex > 0) {
-                        ObjectNode edge4 = objectMapper.createObjectNode();
-                        edge4.put("source", "proc_" + (processIndex - 1));
-                        edge4.put("target", fileId);
-                        edge4.put("label", "access");
-                        edges.add(edge4);
-                    }
-                    
-                    fileIndex++;
+                    // 进程 -> 文件
+                    ObjectNode edge4 = objectMapper.createObjectNode();
+                    edge4.put("source", lastProcessId);
+                    edge4.put("target", fileId);
+                    edge4.put("label", "access");
+                    edges.add(edge4);
                 }
             }
         }
         
         log.info("✅ 构建完成: {} 个节点, {} 条边", nodes.size(), edges.size());
-        log.info("   - 进程节点: {}", addedProcesses.size());
-        log.info("   - 文件节点: {}", addedFiles.size());
+        log.info("   - 进程节点: {}", processIdMap.size());
+        log.info("   - 文件节点: {}", fileIdMap.size());
         
         graphData.set("nodes", nodes);
         graphData.set("edges", edges);
