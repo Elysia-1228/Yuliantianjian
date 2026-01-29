@@ -287,23 +287,36 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
         const edges = [];
         const nodeSet = new Set();
         
-        aggregation.alerts.forEach(alert => {
+        aggregation.alerts.forEach((alert, idx) => {
           const attackerId = `attacker_${alert.sourceIp}`;
           const targetId = `target_${alert.destIp}`;
           
           if (!nodeSet.has(attackerId)) {
-            nodes.push({ id: attackerId, label: alert.sourceIp, type: 'attacker' });
+            nodes.push({ 
+              id: attackerId, 
+              label: alert.sourceIp, 
+              type: 'attacker',
+              category: 0,
+              timestamp: alert.occurTime || new Date().toISOString()
+            });
             nodeSet.add(attackerId);
           }
           if (!nodeSet.has(targetId)) {
-            nodes.push({ id: targetId, label: alert.destIp, type: 'process' });
+            nodes.push({ 
+              id: targetId, 
+              label: alert.destIp, 
+              type: 'process',
+              category: 1,
+              timestamp: alert.occurTime || new Date().toISOString(),
+              cmdline: alert.attackType || ''
+            });
             nodeSet.add(targetId);
           }
           
           edges.push({
             source: attackerId,
             target: targetId,
-            label: alert.attackType || '攻击'
+            label: alert.attackType || '连接'
           });
         });
         
