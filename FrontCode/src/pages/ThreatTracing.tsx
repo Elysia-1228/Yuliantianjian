@@ -282,18 +282,32 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
     // 调用真实的后端特征提取API
     const fetchFeatures = async () => {
       try {
-        // 构建溯源图数据
-        const graphData = {
-          nodes: aggregation.alerts.flatMap(alert => [
-            { id: `attacker_${alert.sourceIp}`, label: alert.sourceIp, type: 'attacker' },
-            { id: `target_${alert.destIp}`, label: alert.destIp, type: 'process' }
-          ]),
-          edges: aggregation.alerts.map(alert => ({
-            source: `attacker_${alert.sourceIp}`,
-            target: `target_${alert.destIp}`,
+        // 构建符合后端API要求的溯源图数据
+        const nodes = [];
+        const edges = [];
+        const nodeSet = new Set();
+        
+        aggregation.alerts.forEach(alert => {
+          const attackerId = `attacker_${alert.sourceIp}`;
+          const targetId = `target_${alert.destIp}`;
+          
+          if (!nodeSet.has(attackerId)) {
+            nodes.push({ id: attackerId, label: alert.sourceIp, type: 'attacker' });
+            nodeSet.add(attackerId);
+          }
+          if (!nodeSet.has(targetId)) {
+            nodes.push({ id: targetId, label: alert.destIp, type: 'process' });
+            nodeSet.add(targetId);
+          }
+          
+          edges.push({
+            source: attackerId,
+            target: targetId,
             label: alert.attackType || '攻击'
-          }))
-        };
+          });
+        });
+        
+        const graphData = { nodes, edges };
         
         // 调用后端API
         const response = await fetch('http://localhost:7890/api/pids/features/extract', {
@@ -379,55 +393,8 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
 
   return (
     <div className="h-full flex flex-col bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 overflow-hidden">
-      {/* 头部 - 带动画边框 */}
-      <div className="relative p-4 border-b border-cyan-500/20">
-        <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-cyan-500 via-purple-500 to-cyan-500 animate-pulse" />
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-red-500/30 to-orange-500/30 flex items-center justify-center border border-red-500/50">
-              <Skull className="w-6 h-6 text-red-400" />
-            </div>
-            <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-ping" />
-            <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full" />
-          </div>
-          <div>
-            <div className="text-lg font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400">
-              威胁情报分析
-            </div>
-            <div className="text-xs text-slate-500 font-mono">THREAT INTELLIGENCE</div>
-          </div>
-        </div>
-      </div>
-
-      {/* IP信息卡片 */}
-      <div className="p-4">
-        <div className="relative bg-gradient-to-r from-red-900/30 via-slate-900/50 to-red-900/30 rounded-xl p-4 border border-red-500/30 overflow-hidden">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(239,68,68,0.1),transparent_70%)]" />
-          <div className="relative z-10">
-            <div className="text-xs text-red-400/80 uppercase tracking-wider mb-1 flex items-center gap-2">
-              <Radio size={10} className="animate-pulse" />
-              攻击源IP
-            </div>
-            <div className="text-2xl font-black font-mono text-red-400 tracking-wider">
-              {aggregation.sourceIp}
-            </div>
-            <div className="flex items-center gap-4 mt-2 text-xs">
-              <span className="text-slate-400">
-                <span className="text-red-400 font-bold">{aggregation.count}</span> 次攻击
-              </span>
-              <span className="text-slate-400">
-                <span className="text-yellow-400 font-bold">{aggregation.threatTypes.length}</span> 种威胁
-              </span>
-              <span className="text-slate-400">
-                <span className="text-purple-400 font-bold">{aggregation.targetIps.length}</span> 个目标
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* 标签页 */}
-      <div className="px-4 flex gap-1">
+      <div className="px-4 pt-4 flex gap-1">
         {[
           { id: 'overview', label: '总览', icon: Eye },
           { id: 'threats', label: '威胁', icon: Bug },
