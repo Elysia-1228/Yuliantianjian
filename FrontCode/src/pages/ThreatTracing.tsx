@@ -279,48 +279,83 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
   ];
 
   useEffect(() => {
-    const mockScore = 65 + Math.random() * 30;
-    setAnomalyScore(mockScore);
-    
-    const mockVector = Array.from({ length: 130 }, () => Math.random());
-    setRawVector(mockVector);
-    
-    const mockGroups: any = {};
-    FEATURE_GROUPS.forEach(g => {
-      // 使用更真实的数值分布
-      let current;
-      if (g.key === 'semantic') {
-        current = g.baseline * (2.5 + Math.random() * 8); // 语义特征通常异常值更高
-      } else if (g.key === 'sequence') {
-        current = g.baseline * (1.8 + Math.random() * 4);
-      } else {
-        current = g.baseline * (1.2 + Math.random() * 2.5);
+    // 调用真实的后端特征提取API
+    const fetchFeatures = async () => {
+      try {
+        // 构建溯源图数据
+        const graphData = {
+          nodes: aggregation.alerts.flatMap(alert => [
+            { id: `attacker_${alert.sourceIp}`, label: alert.sourceIp, type: 'attacker' },
+            { id: `target_${alert.destIp}`, label: alert.destIp, type: 'process' }
+          ]),
+          edges: aggregation.alerts.map(alert => ({
+            source: `attacker_${alert.sourceIp}`,
+            target: `target_${alert.destIp}`,
+            label: alert.attackType || '攻击'
+          }))
+        };
+        
+        // 调用后端API
+        const response = await fetch('http://localhost:7890/api/pids/features/extract', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            graphData,
+            threatId: `threat_${aggregation.sourceIp}`,
+            saveToDb: false
+          })
+        });
+        
+        if (!response.ok) {
+          throw new Error('特征提取API调用失败');
+        }
+        
+        const data = await response.json();
+        
+        // 设置130维原始向量
+        setRawVector(data.rawVector || []);
+        
+        // 设置分组特征数据
+        const groupsData: any = {};
+        FEATURE_GROUPS.forEach(g => {
+          const groupDetail = data.groups?.[g.key === 'graph_structure' ? 'graphStructure' : g.key];
+          if (groupDetail) {
+            const current = groupDetail.current;
+            const baseline = groupDetail.baseline;
+            const deviation = ((current / baseline - 1) * 100).toFixed(0);
+            
+            groupsData[g.key] = {
+              current,
+              baseline,
+              label: current > baseline ? `+${deviation}%` : `${deviation}%`,
+              top3: groupDetail.topFeatures?.slice(0, 3).map((name: string) => ({
+                name,
+                score: (Math.random() * 0.5).toFixed(3) // 临时使用随机值，后续从dimensions获取
+              })) || []
+            };
+          }
+        });
+        setFeatureGroups(groupsData);
+        
+        // 计算加权评分
+        let weightedScore = 0;
+        FEATURE_GROUPS.forEach(g => {
+          const groupData = groupsData[g.key];
+          if (groupData) {
+            weightedScore += (groupData.current / groupData.baseline) * g.weight * 100;
+          }
+        });
+        setAnomalyScore(Math.min(weightedScore, 100));
+        
+      } catch (error) {
+        console.error('特征提取失败:', error);
+        // 如果API调用失败，使用空数据
+        setRawVector(Array.from({ length: 130 }, () => 0));
+        setAnomalyScore(0);
       }
-      
-      const deviation = ((current / g.baseline - 1) * 100).toFixed(0);
-      
-      // 使用真实的子特征名称
-      const top3 = g.subFeatures.slice(0, 3).map((name, idx) => ({
-        name,
-        score: (current / g.baseline * (0.3 - idx * 0.08)).toFixed(3)
-      }));
-      
-      mockGroups[g.key] = {
-        current,
-        baseline: g.baseline,
-        label: current > g.baseline ? `+${deviation}%` : `${deviation}%`,
-        top3
-      };
-    });
-    setFeatureGroups(mockGroups);
+    };
     
-    // 计算加权评分
-    let weightedScore = 0;
-    FEATURE_GROUPS.forEach(g => {
-      const data = mockGroups[g.key];
-      weightedScore += (data.current / data.baseline) * g.weight * 100;
-    });
-    setAnomalyScore(Math.min(weightedScore, 100));
+    fetchFeatures();
     
     setScanPhase(0);
     let groupIdx = 0;
@@ -418,17 +453,42 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
         {activeTab === 'overview' && (
           <div className="space-y-3 animate-fadeIn">
             {/* 130维特征热力图 - 分组展示 */}
-            <div className="bg-black/30 rounded-lg p-3 border border-slate-700/50">
-              <div className="text-xs text-slate-500 uppercase tracking-wider mb-3 flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <Activity size={12} className="text-cyan-400" />
-                  AI特征提取引擎 - 130维向量空间
-                </span>
-                <span className="text-cyan-400/60 font-mono">{rawVector.length}D</span>
+            <div className="relative bg-gradient-to-br from-slate-900/90 via-slate-800/80 to-slate-900/90 rounded-xl p-5 border-2 border-cyan-500/30 shadow-2xl overflow-hidden">
+              {/* 背景装饰 */}
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(6,182,212,0.15),transparent_50%)]" />
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_80%,rgba(168,85,247,0.1),transparent_50%)]" />
+              
+              {/* 超大标题 */}
+              <div className="relative z-10 mb-5">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 bg-cyan-500/20 rounded-lg border border-cyan-500/50">
+                    <Activity size={20} className="text-cyan-400" />
+                  </div>
+                  <div>
+                    <div className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400 tracking-tight">
+                      AI特征提取引擎
+                    </div>
+                    <div className="text-xs text-slate-400 font-mono mt-0.5">130-Dimension Feature Extraction Engine</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 text-xs">
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-cyan-500/10 rounded-lg border border-cyan-500/30">
+                    <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse" />
+                    <span className="text-cyan-300 font-mono font-bold">{rawVector.length} DIMS</span>
+                  </div>
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-500/10 rounded-lg border border-purple-500/30">
+                    <Zap size={12} className="text-purple-400" />
+                    <span className="text-purple-300 font-mono">NetworkX Algorithm</span>
+                  </div>
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/10 rounded-lg border border-green-500/30">
+                    <CheckCircle size={12} className="text-green-400" />
+                    <span className="text-green-300 font-mono">Real-time</span>
+                  </div>
+                </div>
               </div>
               
               {/* 分组热力图 */}
-              <div className="space-y-2">
+              <div className="relative z-10 space-y-3">
                 {FEATURE_GROUPS.map((group, groupIdx) => {
                   const isHovered = hoveredFeature === group.key;
                   const groupVector = rawVector.slice(group.range[0], group.range[1] + 1);
@@ -440,16 +500,16 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                     <div 
                       key={group.key}
                       className={`transition-all duration-300 ${
-                        isHovered ? 'scale-105' : 'scale-100'
+                        isHovered ? 'scale-[1.02] shadow-lg shadow-cyan-500/20' : 'scale-100'
                       }`}
                     >
-                      <div className="flex items-center gap-2 mb-1">
-                        <div className={`text-[9px] font-mono w-20 ${
-                          isHovered ? 'text-cyan-400 font-bold' : 'text-slate-500'
+                      <div className="flex items-center gap-3 mb-1.5">
+                        <div className={`text-xs font-bold w-24 transition-all ${
+                          isHovered ? 'text-cyan-300 scale-105' : 'text-slate-400'
                         }`}>
                           {group.name}
                         </div>
-                        <div className="flex-1 flex gap-0.5">
+                        <div className="flex-1 flex gap-1">
                           {groupVector.map((val, idx) => {
                             const intensity = isScanned ? Math.min(val, 1) : 0;
                             const hue = intensity > 0.7 ? 0 : intensity > 0.5 ? 30 : 180;
@@ -458,17 +518,21 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                             return (
                               <div
                                 key={idx}
-                                className={`h-3 flex-1 rounded-sm transition-all duration-200 ${
-                                  isScanning ? 'animate-pulse' : ''
+                                className={`h-4 flex-1 rounded transition-all duration-200 ${
+                                  isScanning ? 'animate-pulse ring-1 ring-cyan-400' : ''
+                                } ${
+                                  isHovered ? 'scale-y-110' : ''
                                 }`}
                                 style={{
                                   backgroundColor: isScanned
-                                    ? `hsla(${hue}, 80%, 55%, ${Math.max(intensity * 0.9, 0.2) * opacity})`
-                                    : 'rgba(30,41,59,0.3)',
+                                    ? `hsla(${hue}, 85%, 60%, ${Math.max(intensity * 0.95, 0.25) * opacity})`
+                                    : 'rgba(30,41,59,0.4)',
                                   boxShadow: isScanning
-                                    ? '0 0 6px rgba(6,182,212,0.8)'
+                                    ? '0 0 8px rgba(6,182,212,1), 0 0 16px rgba(6,182,212,0.5)'
                                     : intensity > 0.7
-                                    ? '0 0 4px rgba(239,68,68,0.6)'
+                                    ? '0 0 6px rgba(239,68,68,0.8), 0 0 12px rgba(239,68,68,0.4)'
+                                    : intensity > 0.5
+                                    ? '0 0 4px rgba(251,146,60,0.6)'
                                     : 'none'
                                 }}
                                 title={`${group.name}[${idx}]: ${val.toFixed(3)}`}
@@ -476,8 +540,12 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                             );
                           })}
                         </div>
-                        <div className={`text-[9px] font-mono w-12 text-right ${
-                          groupAvg > 0.6 ? 'text-red-400' : groupAvg > 0.4 ? 'text-orange-400' : 'text-cyan-400'
+                        <div className={`text-sm font-black font-mono w-16 text-right transition-all ${
+                          groupAvg > 0.6 ? 'text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]' : 
+                          groupAvg > 0.4 ? 'text-orange-400 drop-shadow-[0_0_6px_rgba(251,146,60,0.6)]' : 
+                          'text-cyan-400 drop-shadow-[0_0_6px_rgba(6,182,212,0.6)]'
+                        } ${
+                          isHovered ? 'scale-110' : ''
                         }`}>
                           {(groupAvg * 100).toFixed(0)}%
                         </div>
@@ -488,22 +556,25 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
               </div>
               
               {/* 图例 */}
-              <div className="mt-3 pt-2 border-t border-slate-700/30 flex items-center justify-between text-[8px] text-slate-500">
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1">
-                    <div className="w-2 h-2 rounded-sm bg-cyan-500/60" />
-                    <span>正常</span>
+              <div className="relative z-10 mt-4 pt-3 border-t border-cyan-500/20 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded bg-gradient-to-br from-cyan-400 to-cyan-600 shadow-lg shadow-cyan-500/50" />
+                    <span className="text-xs text-cyan-300 font-medium">正常</span>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <div className="w-2 h-2 rounded-sm bg-orange-500/60" />
-                    <span>警告</span>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded bg-gradient-to-br from-orange-400 to-orange-600 shadow-lg shadow-orange-500/50" />
+                    <span className="text-xs text-orange-300 font-medium">警告</span>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <div className="w-2 h-2 rounded-sm bg-red-500/60" />
-                    <span>高危</span>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded bg-gradient-to-br from-red-400 to-red-600 shadow-lg shadow-red-500/50" />
+                    <span className="text-xs text-red-300 font-medium">高危</span>
                   </div>
                 </div>
-                <span className="font-mono">实时特征提取 | NetworkX算法</span>
+                <div className="flex items-center gap-2 text-xs text-slate-400">
+                  <div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+                  <span className="font-mono">Live Extraction</span>
+                </div>
               </div>
             </div>
 
@@ -526,83 +597,127 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                     setSelectedFeature(group.key);
                     setDetailModal({ visible: true, feature: group, top3: data.top3 || [] });
                   }}
-                  className={`bg-black/30 rounded-lg p-3 border border-slate-700/50 transition-all duration-500 cursor-pointer hover:border-cyan-500/50 ${
+                  className={`relative bg-gradient-to-br from-slate-900/80 to-slate-800/60 rounded-xl p-4 border-2 transition-all duration-500 cursor-pointer overflow-hidden ${
                     isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-8'
                   } ${
-                    isCritical ? 'border-red-500/60 bg-red-950/30 animate-pulse' : 
-                    isHigh ? 'border-red-500/40 bg-red-950/20' : ''
+                    isCritical ? 'border-red-500/70 bg-gradient-to-br from-red-950/40 to-red-900/30 shadow-2xl shadow-red-500/30 animate-pulse' : 
+                    isHigh ? 'border-red-500/50 bg-gradient-to-br from-red-950/30 to-red-900/20 shadow-xl shadow-red-500/20' : 
+                    'border-slate-700/50 hover:border-cyan-500/60 hover:shadow-xl hover:shadow-cyan-500/20'
                   }`}
                 >
-                  <div className="flex items-center justify-between text-xs mb-2">
-                    <span className={`font-medium ${isCritical || isHigh ? 'text-red-400' : 'text-slate-300'}`}>
-                      {group.name}
-                      {isCritical && <span className="ml-2 text-[8px] px-1.5 py-0.5 bg-red-500/40 border border-red-500 rounded animate-pulse">CRITICAL</span>}
-                    </span>
+                  {/* 背景光效 */}
+                  <div className={`absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100 ${
+                    isCritical ? 'bg-[radial-gradient(circle_at_50%_50%,rgba(239,68,68,0.2),transparent_70%)]' :
+                    isHigh ? 'bg-[radial-gradient(circle_at_50%_50%,rgba(251,146,60,0.15),transparent_70%)]' :
+                    'bg-[radial-gradient(circle_at_50%_50%,rgba(6,182,212,0.1),transparent_70%)]'
+                  }`} />
+                  <div className="relative z-10 flex items-center justify-between text-sm mb-3">
                     <div className="flex items-center gap-2">
-                      <span className={`font-mono font-bold ${isCritical || isHigh ? 'text-red-400' : 'text-cyan-400'}`}>{data.label}</span>
-                      <Eye size={10} className="text-slate-500 hover:text-cyan-400" />
+                      <div className={`w-1.5 h-1.5 rounded-full ${
+                        isCritical ? 'bg-red-500 animate-pulse shadow-lg shadow-red-500' :
+                        isHigh ? 'bg-orange-500 shadow-lg shadow-orange-500' :
+                        'bg-cyan-500 shadow-lg shadow-cyan-500'
+                      }`} />
+                      <span className={`font-bold ${
+                        isCritical || isHigh ? 'text-red-300' : 'text-slate-200'
+                      }`}>
+                        {group.name}
+                      </span>
+                      {isCritical && (
+                        <span className="px-2 py-0.5 text-[10px] font-black bg-red-500/50 text-red-100 border border-red-400 rounded-md animate-pulse shadow-lg shadow-red-500/50">
+                          CRITICAL
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className={`text-lg font-black font-mono ${
+                        isCritical ? 'text-red-400 drop-shadow-[0_0_10px_rgba(239,68,68,1)]' :
+                        isHigh ? 'text-orange-400 drop-shadow-[0_0_8px_rgba(251,146,60,0.8)]' :
+                        'text-cyan-400 drop-shadow-[0_0_8px_rgba(6,182,212,0.8)]'
+                      }`}>{data.label}</span>
+                      <Eye size={14} className="text-slate-400 hover:text-cyan-300 transition-colors" />
                     </div>
                   </div>
-                  <div className="relative h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                  <div className="relative z-10 h-2 bg-slate-900/80 rounded-full overflow-hidden shadow-inner">
                     <div 
-                      className="absolute top-0 h-full w-0.5 bg-yellow-400 z-10" 
-                      style={{ left: `${baselinePos}%`, boxShadow: '0 0 4px rgba(250,204,21,0.7)' }} 
+                      className="absolute top-0 h-full w-1 bg-yellow-400 z-10 rounded-full" 
+                      style={{ left: `${baselinePos}%`, boxShadow: '0 0 8px rgba(250,204,21,1), 0 0 16px rgba(250,204,21,0.5)' }} 
                     />
                     <div 
                       className={`absolute h-full rounded-full transition-all duration-700 ${
                         isCritical
-                          ? 'bg-gradient-to-r from-red-700 via-red-600 to-red-500 animate-pulse'
+                          ? 'bg-gradient-to-r from-red-600 via-red-500 to-orange-500 animate-pulse'
                           : isHigh 
-                          ? 'bg-gradient-to-r from-red-600 via-red-500 to-orange-500' 
-                          : 'bg-gradient-to-r from-cyan-600 via-cyan-500 to-cyan-400'
+                          ? 'bg-gradient-to-r from-red-500 via-orange-500 to-orange-400' 
+                          : 'bg-gradient-to-r from-cyan-500 via-blue-500 to-purple-500'
                       }`}
                       style={{ 
                         width: isVisible ? `${barWidth}%` : '0%', 
                         boxShadow: isCritical
-                          ? '0 0 16px rgba(239,68,68,1), 0 0 32px rgba(239,68,68,0.6)'
+                          ? '0 0 20px rgba(239,68,68,1), 0 0 40px rgba(239,68,68,0.6), inset 0 0 10px rgba(255,255,255,0.3)'
                           : isHigh 
-                          ? '0 0 8px rgba(239,68,68,0.7)' 
-                          : '0 0 4px rgba(6,182,212,0.5)' 
+                          ? '0 0 12px rgba(251,146,60,0.8), 0 0 24px rgba(251,146,60,0.4), inset 0 0 8px rgba(255,255,255,0.2)' 
+                          : '0 0 10px rgba(6,182,212,0.6), 0 0 20px rgba(6,182,212,0.3), inset 0 0 6px rgba(255,255,255,0.2)' 
                       }} 
                     />
                   </div>
                   {/* 实时数值显示 */}
-                  <div className="mt-2 text-[9px] text-slate-500 font-mono flex items-center justify-between">
-                    <span>Current: <span className="text-cyan-400">{data.current.toFixed(3)}</span></span>
-                    <span>Base: <span className="text-yellow-400">{data.baseline.toFixed(3)}</span></span>
+                  <div className="relative z-10 mt-3 text-[10px] font-mono flex items-center justify-between px-2 py-1.5 bg-slate-950/50 rounded-lg border border-slate-700/30">
+                    <span className="text-slate-400">Current: <span className="text-cyan-300 font-bold">{data.current.toFixed(3)}</span></span>
+                    <span className="text-slate-400">Base: <span className="text-yellow-300 font-bold">{data.baseline.toFixed(3)}</span></span>
                   </div>
                 </div>
               );
             })}
 
-            {/* 详情下钻悬浮窗 */}
+            {/* 详情下钻悬浮窗 - 超酷炫设计 */}
             {detailModal.visible && (
               <div 
-                className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md"
                 onClick={() => setDetailModal({ visible: false, feature: null, top3: [] })}
               >
                 <div 
-                  className="bg-slate-900/95 border border-cyan-500/30 rounded-xl p-6 w-96 shadow-2xl"
+                  className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 border-2 border-cyan-500/50 rounded-2xl p-8 w-[500px] shadow-2xl shadow-cyan-500/20 animate-fadeIn"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="text-lg font-bold text-cyan-400 mb-4 flex items-center justify-between">
-                    <span>{detailModal.feature?.name} - Top 3 子特征</span>
+                  {/* 背景光效 */}
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(6,182,212,0.15),transparent_50%)]" />
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_0%_100%,rgba(168,85,247,0.1),transparent_50%)]" />
+                  
+                  {/* 标题 */}
+                  <div className="relative z-10 mb-6 flex items-center justify-between">
+                    <div>
+                      <div className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400">
+                        {detailModal.feature?.name}
+                      </div>
+                      <div className="text-xs text-slate-400 font-mono mt-1">Top 3 显著子特征</div>
+                    </div>
                     <button 
                       onClick={() => setDetailModal({ visible: false, feature: null, top3: [] })}
-                      className="text-slate-500 hover:text-red-400"
+                      className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800/50 border border-slate-700 text-slate-400 hover:text-red-400 hover:border-red-500/50 transition-all text-2xl"
                     >×</button>
                   </div>
-                  <div className="space-y-3">
+                  
+                  {/* Top3列表 */}
+                  <div className="relative z-10 space-y-4">
                     {detailModal.top3.map((item, idx) => (
-                      <div key={idx} className="bg-black/40 rounded-lg p-3 border border-slate-700/50">
-                        <div className="flex items-center justify-between text-sm mb-2">
-                          <span className="text-slate-300">{item.name}</span>
-                          <span className="font-mono font-bold text-cyan-400">{item.score}</span>
+                      <div key={idx} className="bg-gradient-to-r from-slate-900/80 to-slate-800/60 rounded-xl p-4 border border-slate-700/50 hover:border-cyan-500/50 transition-all shadow-lg">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-purple-500 flex items-center justify-center text-white font-black shadow-lg">
+                              #{idx + 1}
+                            </div>
+                            <span className="text-sm font-bold text-slate-200">{item.name}</span>
+                          </div>
+                          <span className="text-lg font-black font-mono text-cyan-400 drop-shadow-[0_0_8px_rgba(6,182,212,0.8)]">{item.score}</span>
                         </div>
-                        <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
+                        <div className="h-2 bg-slate-900/80 rounded-full overflow-hidden shadow-inner">
                           <div 
-                            className="h-full bg-gradient-to-r from-cyan-500 to-purple-500 rounded-full"
-                            style={{ width: `${parseFloat(item.score) * 200}%` }}
+                            className="h-full bg-gradient-to-r from-cyan-500 via-blue-500 to-purple-500 rounded-full transition-all duration-1000"
+                            style={{ 
+                              width: `${Math.min(parseFloat(item.score) * 200, 100)}%`,
+                              boxShadow: '0 0 10px rgba(6,182,212,0.6), 0 0 20px rgba(6,182,212,0.3), inset 0 0 6px rgba(255,255,255,0.2)'
+                            }}
                           />
                         </div>
                       </div>
