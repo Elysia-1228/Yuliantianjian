@@ -369,8 +369,9 @@ public class TracingServiceImpl implements TracingService {
                 com.fasterxml.jackson.databind.JsonNode processArray = objectMapper.readTree(affectedProcessStr);
                 
                 if (processArray.isArray() && processArray.size() > 0) {
-                    // 重置当前链的起点为目标服务器
-                    String currentParent = "target_" + targetIp.replace(".", "_");
+                    // 🔥 重要：不要每次都重置为目标服务器，而是从上一个进程继续
+                    // 如果是第一条记录，从目标服务器开始；否则从上一个进程继续
+                    String currentParent = lastProcessId;
                     
                     // 遍历进程链中的每个进程
                     for (int i = 0; i < processArray.size(); i++) {
@@ -394,13 +395,16 @@ public class TracingServiceImpl implements TracingService {
                             edge3.put("target", processId);
                             edge3.put("label", "execute");
                             edges.add(edge3);
+                            
+                            // 更新父节点为当前进程
+                            currentParent = processId;
+                        } else {
+                            // 如果进程已存在，更新 currentParent 为已存在的进程ID
+                            currentParent = processIdMap.get(processName);
                         }
-                        
-                        // 更新父节点为当前进程，用于下一个进程的连接
-                        currentParent = processIdMap.get(processName);
                     }
                     
-                    // 记录最后一个进程ID，用于连接文件
+                    // 记录最后一个进程ID，用于连接文件和下一条告警记录
                     lastProcessId = currentParent;
                 }
             } catch (Exception e) {
