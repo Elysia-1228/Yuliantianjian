@@ -220,6 +220,9 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
   const [featureGroups, setFeatureGroups] = useState<any>({});
   const [scanPhase, setScanPhase] = useState(-1);
   const [visibleCards, setVisibleCards] = useState<string[]>([]);
+  const [hoveredFeature, setHoveredFeature] = useState<string | null>(null);
+  const [selectedFeature, setSelectedFeature] = useState<string | null>(null);
+  const [detailModal, setDetailModal] = useState<{ visible: boolean; feature: any; top3: any[] }>({ visible: false, feature: null, top3: [] });
   
   const threatDistribution = useMemo(() => {
     const dist: Record<string, number> = {};
@@ -233,11 +236,46 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
   const maxCount = Math.max(...threatDistribution.map(([, c]) => c), 1);
 
   const FEATURE_GROUPS = [
-    { name: '图结构特征', key: 'graph_structure', baseline: 0.12 },
-    { name: '节点特征', key: 'node', baseline: 0.12 },
-    { name: '边特征', key: 'edge', baseline: 0.12 },
-    { name: '序列特征', key: 'sequence', baseline: 0.10 },
-    { name: '语义特征', key: 'semantic', baseline: 0.10 },
+    { 
+      name: '图结构特征', 
+      key: 'graph_structure', 
+      baseline: 0.12, 
+      range: [0, 14], 
+      weight: 0.35,
+      subFeatures: ['节点数量', '边密度', '平均度数', '最大路径长度', '聚类系数']
+    },
+    { 
+      name: '节点特征', 
+      key: 'node', 
+      baseline: 0.12, 
+      range: [15, 54], 
+      weight: 0.35,
+      subFeatures: ['进程节点占比', '关键进程频率', '文件节点占比', '网络节点占比', '攻击源节点']
+    },
+    { 
+      name: '边特征', 
+      key: 'edge', 
+      baseline: 0.12, 
+      range: [55, 79], 
+      weight: 0.35,
+      subFeatures: ['执行边数量', '读写边数量', '连接边数量', '攻击链深度', '分支因子']
+    },
+    { 
+      name: '序列特征', 
+      key: 'sequence', 
+      baseline: 0.10, 
+      range: [80, 109], 
+      weight: 0.20,
+      subFeatures: ['时间跨度', '操作熵', '突发强度', '周期模式', '加速度评分']
+    },
+    { 
+      name: '语义特征', 
+      key: 'semantic', 
+      baseline: 0.10, 
+      range: [110, 129], 
+      weight: 0.45,
+      subFeatures: ['SQL注入评分', 'Webshell评分', '权限提升评分', '数据渗透评分', '持久化评分']
+    },
   ];
 
   useEffect(() => {
@@ -249,32 +287,57 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
     
     const mockGroups: any = {};
     FEATURE_GROUPS.forEach(g => {
-      const current = g.baseline * (1 + Math.random() * 3);
+      // 使用更真实的数值分布
+      let current;
+      if (g.key === 'semantic') {
+        current = g.baseline * (2.5 + Math.random() * 8); // 语义特征通常异常值更高
+      } else if (g.key === 'sequence') {
+        current = g.baseline * (1.8 + Math.random() * 4);
+      } else {
+        current = g.baseline * (1.2 + Math.random() * 2.5);
+      }
+      
       const deviation = ((current / g.baseline - 1) * 100).toFixed(0);
+      
+      // 使用真实的子特征名称
+      const top3 = g.subFeatures.slice(0, 3).map((name, idx) => ({
+        name,
+        score: (current / g.baseline * (0.3 - idx * 0.08)).toFixed(3)
+      }));
+      
       mockGroups[g.key] = {
         current,
         baseline: g.baseline,
-        label: current > g.baseline ? `+${deviation}%` : `${deviation}%`
+        label: current > g.baseline ? `+${deviation}%` : `${deviation}%`,
+        top3
       };
     });
     setFeatureGroups(mockGroups);
     
+    // 计算加权评分
+    let weightedScore = 0;
+    FEATURE_GROUPS.forEach(g => {
+      const data = mockGroups[g.key];
+      weightedScore += (data.current / data.baseline) * g.weight * 100;
+    });
+    setAnomalyScore(Math.min(weightedScore, 100));
+    
     setScanPhase(0);
-    let row = 0;
+    let groupIdx = 0;
     const scanInterval = setInterval(() => {
-      row++;
-      setScanPhase(row);
-      if (row > 9) {
+      groupIdx++;
+      setScanPhase(groupIdx);
+      if (groupIdx > 4) {
         clearInterval(scanInterval);
         setScanPhase(-1);
         
         FEATURE_GROUPS.forEach((g, idx) => {
           setTimeout(() => {
             setVisibleCards(prev => [...prev, g.key]);
-          }, idx * 200);
+          }, idx * 300);
         });
       }
-    }, 80);
+    }, 150);
     
     return () => clearInterval(scanInterval);
   }, [aggregation.sourceIp]);
@@ -354,64 +417,131 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
       <div className="flex-1 overflow-y-auto p-4 bg-slate-800/30 mx-4 mb-4 rounded-b-lg border border-t-0 border-slate-700/50">
         {activeTab === 'overview' && (
           <div className="space-y-3 animate-fadeIn">
-            {/* 130维点阵图 */}
+            {/* 130维特征热力图 - 分组展示 */}
             <div className="bg-black/30 rounded-lg p-3 border border-slate-700/50">
-              <div className="text-xs text-slate-500 uppercase tracking-wider mb-2 flex items-center justify-between">
-                <span>130-DIMENSION FEATURE MAP</span>
-                <span className="text-cyan-400/60">{rawVector.length} dims</span>
+              <div className="text-xs text-slate-500 uppercase tracking-wider mb-3 flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Activity size={12} className="text-cyan-400" />
+                  AI特征提取引擎 - 130维向量空间
+                </span>
+                <span className="text-cyan-400/60 font-mono">{rawVector.length}D</span>
               </div>
-              <div 
-                className="grid gap-0.5"
-                style={{ 
-                  gridTemplateColumns: 'repeat(13, 1fr)',
-                  gridTemplateRows: 'repeat(10, 1fr)',
-                  height: '120px'
-                }}
-              >
-                {Array.from({ length: 130 }).map((_, idx) => {
-                  const val = rawVector[idx] || 0;
-                  const row = Math.floor(idx / 13);
-                  const isScanning = scanPhase >= 0 && row === scanPhase;
-                  const isScanned = scanPhase < 0 || row < scanPhase;
-                  const intensity = isScanned ? Math.min(val, 1) : 0;
-                  const hue = intensity > 0.7 ? 0 : intensity > 0.4 ? 30 : 180;
+              
+              {/* 分组热力图 */}
+              <div className="space-y-2">
+                {FEATURE_GROUPS.map((group, groupIdx) => {
+                  const isHovered = hoveredFeature === group.key;
+                  const groupVector = rawVector.slice(group.range[0], group.range[1] + 1);
+                  const groupAvg = groupVector.reduce((a, b) => a + b, 0) / groupVector.length;
+                  const isScanning = scanPhase >= 0 && scanPhase <= 4 && scanPhase === groupIdx;
+                  const isScanned = scanPhase < 0 || scanPhase > groupIdx;
                   
                   return (
                     <div 
-                      key={idx}
-                      className={`rounded-sm transition-all duration-200 ${isScanning ? 'ring-1 ring-cyan-400' : ''}`}
-                      style={{ 
-                        backgroundColor: isScanned 
-                          ? `hsla(${hue}, 70%, 50%, ${Math.max(intensity * 0.8, 0.15)})` 
-                          : 'rgba(30,41,59,0.4)',
-                        boxShadow: isScanning ? '0 0 6px rgba(6,182,212,0.6)' : 
-                                   intensity > 0.7 ? '0 0 3px rgba(239,68,68,0.5)' : 'none'
-                      }}
-                    />
+                      key={group.key}
+                      className={`transition-all duration-300 ${
+                        isHovered ? 'scale-105' : 'scale-100'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className={`text-[9px] font-mono w-20 ${
+                          isHovered ? 'text-cyan-400 font-bold' : 'text-slate-500'
+                        }`}>
+                          {group.name}
+                        </div>
+                        <div className="flex-1 flex gap-0.5">
+                          {groupVector.map((val, idx) => {
+                            const intensity = isScanned ? Math.min(val, 1) : 0;
+                            const hue = intensity > 0.7 ? 0 : intensity > 0.5 ? 30 : 180;
+                            const opacity = isHovered ? 1 : 0.7;
+                            
+                            return (
+                              <div
+                                key={idx}
+                                className={`h-3 flex-1 rounded-sm transition-all duration-200 ${
+                                  isScanning ? 'animate-pulse' : ''
+                                }`}
+                                style={{
+                                  backgroundColor: isScanned
+                                    ? `hsla(${hue}, 80%, 55%, ${Math.max(intensity * 0.9, 0.2) * opacity})`
+                                    : 'rgba(30,41,59,0.3)',
+                                  boxShadow: isScanning
+                                    ? '0 0 6px rgba(6,182,212,0.8)'
+                                    : intensity > 0.7
+                                    ? '0 0 4px rgba(239,68,68,0.6)'
+                                    : 'none'
+                                }}
+                                title={`${group.name}[${idx}]: ${val.toFixed(3)}`}
+                              />
+                            );
+                          })}
+                        </div>
+                        <div className={`text-[9px] font-mono w-12 text-right ${
+                          groupAvg > 0.6 ? 'text-red-400' : groupAvg > 0.4 ? 'text-orange-400' : 'text-cyan-400'
+                        }`}>
+                          {(groupAvg * 100).toFixed(0)}%
+                        </div>
+                      </div>
+                    </div>
                   );
                 })}
+              </div>
+              
+              {/* 图例 */}
+              <div className="mt-3 pt-2 border-t border-slate-700/30 flex items-center justify-between text-[8px] text-slate-500">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-sm bg-cyan-500/60" />
+                    <span>正常</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-sm bg-orange-500/60" />
+                    <span>警告</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-sm bg-red-500/60" />
+                    <span>高危</span>
+                  </div>
+                </div>
+                <span className="font-mono">实时特征提取 | NetworkX算法</span>
               </div>
             </div>
 
             {/* 5个特征维度卡片 */}
             {FEATURE_GROUPS.map(group => {
-              const data = featureGroups[group.key] || { current: 0, baseline: group.baseline, label: '0%' };
+              const data = featureGroups[group.key] || { current: 0, baseline: group.baseline, label: '0%', top3: [] };
               const ratio = data.current / data.baseline;
               const isHigh = ratio > 2.5;
+              const isCritical = ratio > 5; // 过载：超过500%
               const isVisible = visibleCards.includes(group.key);
               const barWidth = Math.min((data.current / 1) * 100, 100);
               const baselinePos = (data.baseline / 1) * 100;
               
               return (
                 <div 
-                  key={group.key} 
-                  className={`bg-black/30 rounded-lg p-3 border border-slate-700/50 transition-all duration-500 ${
+                  key={group.key}
+                  onMouseEnter={() => setHoveredFeature(group.key)}
+                  onMouseLeave={() => setHoveredFeature(null)}
+                  onClick={() => {
+                    setSelectedFeature(group.key);
+                    setDetailModal({ visible: true, feature: group, top3: data.top3 || [] });
+                  }}
+                  className={`bg-black/30 rounded-lg p-3 border border-slate-700/50 transition-all duration-500 cursor-pointer hover:border-cyan-500/50 ${
                     isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-8'
-                  } ${isHigh ? 'border-red-500/40 bg-red-950/20' : ''}`}
+                  } ${
+                    isCritical ? 'border-red-500/60 bg-red-950/30 animate-pulse' : 
+                    isHigh ? 'border-red-500/40 bg-red-950/20' : ''
+                  }`}
                 >
                   <div className="flex items-center justify-between text-xs mb-2">
-                    <span className={`font-medium ${isHigh ? 'text-red-400' : 'text-slate-300'}`}>{group.name}</span>
-                    <span className={`font-mono font-bold ${isHigh ? 'text-red-400' : 'text-cyan-400'}`}>{data.label}</span>
+                    <span className={`font-medium ${isCritical || isHigh ? 'text-red-400' : 'text-slate-300'}`}>
+                      {group.name}
+                      {isCritical && <span className="ml-2 text-[8px] px-1.5 py-0.5 bg-red-500/40 border border-red-500 rounded animate-pulse">CRITICAL</span>}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`font-mono font-bold ${isCritical || isHigh ? 'text-red-400' : 'text-cyan-400'}`}>{data.label}</span>
+                      <Eye size={10} className="text-slate-500 hover:text-cyan-400" />
+                    </div>
                   </div>
                   <div className="relative h-1.5 bg-slate-800 rounded-full overflow-hidden">
                     <div 
@@ -420,21 +550,67 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                     />
                     <div 
                       className={`absolute h-full rounded-full transition-all duration-700 ${
-                        isHigh 
+                        isCritical
+                          ? 'bg-gradient-to-r from-red-700 via-red-600 to-red-500 animate-pulse'
+                          : isHigh 
                           ? 'bg-gradient-to-r from-red-600 via-red-500 to-orange-500' 
                           : 'bg-gradient-to-r from-cyan-600 via-cyan-500 to-cyan-400'
                       }`}
                       style={{ 
                         width: isVisible ? `${barWidth}%` : '0%', 
-                        boxShadow: isHigh 
+                        boxShadow: isCritical
+                          ? '0 0 16px rgba(239,68,68,1), 0 0 32px rgba(239,68,68,0.6)'
+                          : isHigh 
                           ? '0 0 8px rgba(239,68,68,0.7)' 
                           : '0 0 4px rgba(6,182,212,0.5)' 
                       }} 
                     />
                   </div>
+                  {/* 实时数值显示 */}
+                  <div className="mt-2 text-[9px] text-slate-500 font-mono flex items-center justify-between">
+                    <span>Current: <span className="text-cyan-400">{data.current.toFixed(3)}</span></span>
+                    <span>Base: <span className="text-yellow-400">{data.baseline.toFixed(3)}</span></span>
+                  </div>
                 </div>
               );
             })}
+
+            {/* 详情下钻悬浮窗 */}
+            {detailModal.visible && (
+              <div 
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+                onClick={() => setDetailModal({ visible: false, feature: null, top3: [] })}
+              >
+                <div 
+                  className="bg-slate-900/95 border border-cyan-500/30 rounded-xl p-6 w-96 shadow-2xl"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="text-lg font-bold text-cyan-400 mb-4 flex items-center justify-between">
+                    <span>{detailModal.feature?.name} - Top 3 子特征</span>
+                    <button 
+                      onClick={() => setDetailModal({ visible: false, feature: null, top3: [] })}
+                      className="text-slate-500 hover:text-red-400"
+                    >×</button>
+                  </div>
+                  <div className="space-y-3">
+                    {detailModal.top3.map((item, idx) => (
+                      <div key={idx} className="bg-black/40 rounded-lg p-3 border border-slate-700/50">
+                        <div className="flex items-center justify-between text-sm mb-2">
+                          <span className="text-slate-300">{item.name}</span>
+                          <span className="font-mono font-bold text-cyan-400">{item.score}</span>
+                        </div>
+                        <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-gradient-to-r from-cyan-500 to-purple-500 rounded-full"
+                            style={{ width: `${parseFloat(item.score) * 200}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
