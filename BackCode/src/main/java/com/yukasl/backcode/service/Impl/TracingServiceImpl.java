@@ -365,10 +365,21 @@ public class TracingServiceImpl implements TracingService {
             
             // 🔥 关键修复：解析 JSON 数组字符串（如 ["nginx", "php-fpm", "mysql"]）
             try {
+                // 清理字符串：移除外层引号和转义字符
+                String cleanedStr = affectedProcessStr.trim();
+                if (cleanedStr.startsWith("\"") && cleanedStr.endsWith("\"")) {
+                    cleanedStr = cleanedStr.substring(1, cleanedStr.length() - 1);
+                }
+                cleanedStr = cleanedStr.replace("\\\"", "\"");
+                
+                log.info("🔍 [DEBUG] 原始进程链: {}", affectedProcessStr);
+                log.info("🔍 [DEBUG] 清理后进程链: {}", cleanedStr);
+                
                 // 解析进程链数组
-                com.fasterxml.jackson.databind.JsonNode processArray = objectMapper.readTree(affectedProcessStr);
+                com.fasterxml.jackson.databind.JsonNode processArray = objectMapper.readTree(cleanedStr);
                 
                 if (processArray.isArray() && processArray.size() > 0) {
+                    log.info("✅ [DEBUG] 成功解析为数组，长度: {}", processArray.size());
                     // 🔥 重要：不要每次都重置为目标服务器，而是从上一个进程继续
                     // 如果是第一条记录，从目标服务器开始；否则从上一个进程继续
                     String currentParent = lastProcessId;
