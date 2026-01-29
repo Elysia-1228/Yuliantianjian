@@ -2331,13 +2331,13 @@ const ThreatTracing: React.FC = () => {
         ) : (
           /* PIDS因果溯源视图 - 聚合展示 */
           <div className="flex-1 flex h-[calc(100vh-64px)]">
-            {/* 左侧聚合列表 - 科技感攻击源导航 */}
-            <div className="w-[320px] border-r border-cyan-500/20 flex flex-col bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 relative overflow-hidden">
+            {/* 左侧聚合列表 - 科技感攻击源导航 (18%) */}
+            <div className="w-[18%] min-w-[240px] max-w-[280px] border-r border-cyan-500/20 flex flex-col bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 relative overflow-hidden">
               {/* 顶部装饰线 */}
               <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-500 to-transparent" />
               
               {/* 头部标题 */}
-              <div className="p-4 border-b border-cyan-500/20 relative">
+              <div className="p-3 border-b border-cyan-500/20 relative">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500/30 to-purple-500/30 flex items-center justify-center border border-cyan-500/50">
                     <Target className="w-5 h-5 text-cyan-400" />
@@ -2560,9 +2560,9 @@ const ThreatTracing: React.FC = () => {
               )}
             </div>
 
-            {/* 右侧详情面板 - 科技感威胁情报分析 */}
+            {/* 右侧详情面板 - 威胁情报分析 (26%) */}
             {selectedAggregation && (
-              <div className="w-[340px] border-l border-cyan-500/20">
+              <div className="w-[26%] min-w-[300px] max-w-[400px] border-l border-cyan-500/20 overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(6,182,212,0.5) rgba(15,23,42,0.5)' }}>
                 <CyberDetailPanel 
                   aggregation={selectedAggregation}
                   totalAlerts={tracingEvents.length}
