@@ -81,30 +81,139 @@ const getGlowStyle = (color: string) => ({
   shadowColor: color       // 光晕颜色跟随本体
 });
 
-// 🔥 将图数据转换为树状结构（tree系列）
-const convertToTreeData = (nodes: any[], edges: any[]) => {
-  const rootNodes = nodes.filter(n => n.type === 'attacker');
-  if (rootNodes.length === 0) return null;
+// 🔥 将图数据转换为graph格式（树状布局算法）
+const convertToGraphData = (nodes: any[], edges: any[]) => {
+  console.log('📊 [convertToGraphData] 开始转换，节点数:', nodes.length, '边数:', edges.length);
   
-  const root = rootNodes[0];
-  const adjacencyMap = new Map<string, string[]>();
-  edges.forEach(edge => {
-    if (!adjacencyMap.has(edge.source)) {
-      adjacencyMap.set(edge.source, []);
+  if (nodes.length === 0) {
+    console.error('❌ [convertToGraphData] 节点列表为空');
+    return { nodes: [], edges: [] };
+  }
+  
+  // 🔥 节点去重：基于label和type的组合进行去重
+  const nodeMap = new Map<string, any>();
+  const idMapping = new Map<string, string>(); // 旧ID -> 新ID的映射
+  
+  nodes.forEach(node => {
+    const key = `${node.type || 'unknown'}_${node.label || node.id}`;
+    if (!nodeMap.has(key)) {
+      nodeMap.set(key, node);
+      idMapping.set(node.id, node.id);
+    } else {
+      // 如果已存在相同的节点，记录ID映射关系
+      const existingNode = nodeMap.get(key)!;
+      idMapping.set(node.id, existingNode.id);
     }
-    adjacencyMap.get(edge.source)!.push(edge.target);
   });
   
-  const buildTree = (nodeId: string, visited = new Set<string>()): any => {
-    if (visited.has(nodeId)) return null;
-    visited.add(nodeId);
+  const uniqueNodes = Array.from(nodeMap.values());
+  console.log(`🔄 节点去重: ${nodes.length} -> ${uniqueNodes.length}`);
+  
+  // 🔥 更新边的引用，使用去重后的节点ID
+  const uniqueEdges = edges.map(edge => ({
+    ...edge,
+    source: idMapping.get(edge.source) || edge.source,
+    target: idMapping.get(edge.target) || edge.target
+  })).filter(edge => {
+    // 过滤掉自环边（source和target相同的边）
+    return edge.source !== edge.target;
+  });
+  
+  // 进一步去重边（相同source和target的边只保留一条）
+  const edgeSet = new Set<string>();
+  const deduplicatedEdges = uniqueEdges.filter(edge => {
+    const edgeKey = `${edge.source}->${edge.target}`;
+    if (edgeSet.has(edgeKey)) {
+      return false;
+    }
+    edgeSet.add(edgeKey);
+    return true;
+  });
+  
+  console.log(`🔄 边去重: ${edges.length} -> ${deduplicatedEdges.length}`);
+  
+  // 使用去重后的节点和边
+  nodes = uniqueNodes;
+  edges = deduplicatedEdges;
+  
+  // 🌳 优化的树状布局算法：紧凑布局，减小间距
+  const START_X = 80;
+  const LAYER_SPACING = 200;  // 层级间距（从左到右）- 减小20%
+  const MIN_NODE_SPACING = 50;  // 最小节点间距 - 减小50%
+  const MAX_CANVAS_HEIGHT = 800;  // 最大画布高度 - 减小33%
+  const DEFAULT_CANVAS_HEIGHT = 500;  // 默认画布高度 - 减小17%
+  
+  // 构建父子关系映射
+  const childrenMap: Record<string, string[]> = {};
+  const parentMap: Record<string, string> = {};
+  nodes.forEach(n => childrenMap[n.id] = []);
+  
+  edges.forEach((e: any) => {
+    if (!childrenMap[e.source]) childrenMap[e.source] = [];
+    childrenMap[e.source].push(e.target);
+    parentMap[e.target] = e.source;
+  });
+  
+  // 找到根节点（没有父节点的节点）
+  const roots = nodes.filter((n: any) => !parentMap[n.id]);
+  console.log('🌳 找到根节点:', roots.map(r => r.id));
+  
+  // BFS计算每个节点的层级
+  const levels: Record<string, number> = {};
+  const queue: Array<{id: string, level: number}> = roots.map(r => ({id: r.id, level: 0}));
+  let maxLevel = 0;
+  
+  while (queue.length > 0) {
+    const {id, level} = queue.shift()!;
+    levels[id] = level;
+    maxLevel = Math.max(maxLevel, level);
     
-    const node = nodes.find(n => n.id === nodeId);
-    if (!node) return null;
+    (childrenMap[id] || []).forEach(childId => {
+      queue.push({id: childId, level: level + 1});
+    });
+  }
+  
+  // 按层级分组节点
+  const nodesByLevel: Record<number, any[]> = {};
+  for (let i = 0; i <= maxLevel; i++) {
+    nodesByLevel[i] = [];
+  }
+  
+  nodes.forEach((node: any) => {
+    const level = levels[node.id] ?? maxLevel;
+    nodesByLevel[level].push(node);
+  });
+  
+  console.log('🌳 层级分布:', Object.entries(nodesByLevel).map(([level, nodes]) => `层${level}: ${nodes.length}个节点`));
+  
+  // 🔥 动态计算画布高度和节点间距
+  const maxNodesInLevel = Math.max(...Object.values(nodesByLevel).map(n => n.length));
+  const requiredHeight = maxNodesInLevel * MIN_NODE_SPACING;
+  const CANVAS_HEIGHT = Math.min(Math.max(requiredHeight, DEFAULT_CANVAS_HEIGHT), MAX_CANVAS_HEIGHT);
+  const NODE_SPACING = Math.max(MIN_NODE_SPACING, CANVAS_HEIGHT / (maxNodesInLevel + 1));
+  
+  console.log(`📐 画布高度: ${CANVAS_HEIGHT}px, 节点间距: ${NODE_SPACING}px, 最多节点层: ${maxNodesInLevel}个`);
+  
+  // 计算每个节点的坐标
+  const positions: Record<string, {x: number, y: number}> = {};
+  
+  for (let level = 0; level <= maxLevel; level++) {
+    const nodesInLevel = nodesByLevel[level];
+    const x = START_X + level * LAYER_SPACING;
     
-    const children = adjacencyMap.get(nodeId) || [];
-    const childNodes = children.map(childId => buildTree(childId, visited)).filter(Boolean);
+    // 🔥 优化：根据该层节点数量动态调整垂直分布
+    const levelHeight = nodesInLevel.length * NODE_SPACING;
+    const startY = (CANVAS_HEIGHT - levelHeight) / 2 + NODE_SPACING / 2;
     
+    nodesInLevel.forEach((node, idx) => {
+      const y = nodesInLevel.length === 1 ? CANVAS_HEIGHT / 2 : startY + idx * NODE_SPACING;
+      positions[node.id] = { x, y };
+      console.log(`  🎯 节点 ${node.id}: 层级${level}, x=${x}, y=${y}`);
+    });
+  }
+  
+  // 转换节点格式
+  const graphNodes = nodes.map((node) => {
     const baseColor = getNeonColor(node.type || 'process');
     const nodeSymbol = getNodeSymbol(node.type || 'process');
     
@@ -116,12 +225,18 @@ const convertToTreeData = (nodes: any[], edges: any[]) => {
       displayName = fullPath.split('/').pop() || fullPath;
     }
     
+    const pos = positions[node.id] || { x: 0, y: 0 };
+    
     return {
+      id: node.id,
       name: displayName,
-      value: nodeId,
-      nodeData: node,
+      value: node.id,
+      x: pos.x,
+      y: pos.y,
+      fixed: false,
       symbol: nodeSymbol,
       symbolSize: getNodeSize(node.type || 'process'),
+      symbolRotate: node.type === 'attacker' ? 90 : 0,
       itemStyle: {
         color: {
           type: 'radial',
@@ -139,11 +254,66 @@ const convertToTreeData = (nodes: any[], edges: any[]) => {
         shadowBlur: 25,
         shadowColor: baseColor
       },
-      children: childNodes.length > 0 ? childNodes : undefined
+      label: {
+        show: true,
+        position: 'bottom',
+        distance: 12,
+        fontSize: 14,
+        color: '#ffffff',
+        fontWeight: 'bold',
+        fontFamily: 'JetBrains Mono, monospace',
+        formatter: displayName.length > 18 ? displayName.substring(0, 18) + '...' : displayName
+      },
+      nodeData: node  // 保留原始数据用于tooltip
     };
-  };
+  });
   
-  return buildTree(root.id);
+  // 🔥 计算每个源节点的子节点数量，用于智能弯曲
+  const childrenCount: Record<string, number> = {};
+  edges.forEach(edge => {
+    childrenCount[edge.source] = (childrenCount[edge.source] || 0) + 1;
+  });
+  
+  // 转换边格式 - 智能弯曲：有分支时添加弯曲效果
+  const graphEdges = edges.map((edge, index) => {
+    const sourceChildren = childrenCount[edge.source] || 1;
+    // 如果源节点有多个子节点，添加弯曲效果
+    const curveness = sourceChildren > 1 ? 0.25 : 0;
+    
+    return {
+      source: edge.source,
+      target: edge.target,
+      label: {
+        show: false
+      },
+      lineStyle: {
+        color: {
+          type: 'linear',
+          x: 0,
+          y: 0,
+          x2: 1,
+          y2: 0,
+          colorStops: [
+            { offset: 0, color: '#FF8C00' },
+            { offset: 0.5, color: '#FFD700' },
+            { offset: 1, color: '#FF8C00' }
+          ]
+        },
+        width: 3,
+        curveness: curveness,  // 🔥 有分支时自动弯曲
+        shadowBlur: 15,
+        shadowColor: '#FFD700'
+      },
+      emphasis: {
+        lineStyle: {
+          width: 5
+        }
+      }
+    };
+  });
+  
+  console.log('🎉 [convertToGraphData] 转换完成');
+  return { nodes: graphNodes, edges: graphEdges };
 };
 
 const PIDSGraph: React.FC<PIDSGraphProps> = ({
@@ -156,8 +326,6 @@ const PIDSGraph: React.FC<PIDSGraphProps> = ({
   const chartInstanceRef = useRef<echarts.ECharts | null>(null);
   const [zoomLevel, setZoomLevel] = useState(100);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [displayedNodeCount, setDisplayedNodeCount] = useState(0);
-  const animationTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // 初始化ECharts
   useEffect(() => {
@@ -183,9 +351,6 @@ const PIDSGraph: React.FC<PIDSGraphProps> = ({
 
     return () => {
       window.removeEventListener('resize', handleResize);
-      if (animationTimerRef.current) {
-        clearTimeout(animationTimerRef.current);
-      }
       if (chartInstanceRef.current) {
         chartInstanceRef.current.dispose();
         chartInstanceRef.current = null;
@@ -204,29 +369,27 @@ const PIDSGraph: React.FC<PIDSGraphProps> = ({
 
     const { nodes, edges } = graphData;
 
-    // 🔥 转换为树状结构
-    const treeData = convertToTreeData(nodes, edges);
-    if (!treeData) {
-      console.error('❌ 无法构建树状结构');
+    // 🔥 转换为graph格式
+    const convertedData = convertToGraphData(nodes, edges);
+    if (!convertedData || convertedData.nodes.length === 0) {
+      console.error('❌ 无法构建图谱数据');
       return;
     }
 
-    // 🔥 逐条绘制动画：初始化显示节点数为0
-    setDisplayedNodeCount(0);
-    
-    // 清除之前的定时器
-    if (animationTimerRef.current) {
-      clearTimeout(animationTimerRef.current);
-    }
 
     // 🔥 树状图配置
     const option: echarts.EChartsOption = {
       backgroundColor: 'transparent',
+      grid: {
+        show: false,  // 🔥 隐藏网格线
+        containLabel: false
+      },
       tooltip: {
         show: true,
         trigger: 'item',
-        triggerOn: 'mousemove|click',
-        confine: true,
+        triggerOn: 'mousemove',
+        confine: false,  // 🔥 不限制tooltip在容器内，避免阻止交互
+        enterable: false,  // 🔥 不允许鼠标进入tooltip，避免阻止交互
         backgroundColor: 'rgba(5, 11, 20, 0.95)',
         borderColor: '#1890FF',
         borderWidth: 2,
@@ -418,7 +581,7 @@ const PIDSGraph: React.FC<PIDSGraphProps> = ({
             
             html += `<div style="margin-bottom: 8px;">`;
             html += `<div style="color: #94a3b8; font-size: 12px; margin-bottom: 3px;">First Seen (首次发现)</div>`;
-            const timestamp = nodeData.startTime || new Date().toLocaleString('zh-CN', { hour12: false, fractionalSecondDigits: 3 });
+            const timestamp = nodeData.startTime || new Date().toLocaleString('zh-CN', { hour12: false });
             html += `<div style="color: #1890FF; font-size: 12px; font-family: monospace;">${timestamp}</div>`;
             html += `</div>`;
           }
@@ -472,84 +635,32 @@ const PIDSGraph: React.FC<PIDSGraphProps> = ({
       },
       series: [
         {
-          type: 'tree',
-          data: [treeData],
-          orient: 'LR',
-          layout: 'orthogonal',
-          left: '5%',
-          right: '5%',
-          top: '10%',
-          bottom: '10%',
-          symbolRotate: (value: any, params: any) => {
-            const nodeData = params.data.nodeData;
-            if (nodeData && nodeData.type === 'attacker') {
-              return 90;
-            }
-            return 0;
+          type: 'graph',  // 🔥 改用graph系列，支持手动坐标
+          data: convertedData.nodes,
+          edges: convertedData.edges,
+          layout: 'none',  // 🔥 不使用自动布局，使用手动坐标
+          coordinateSystem: null,
+          roam: true,  // 🔥 启用缩放和拖拽
+          draggable: true,  // 🔥 启用节点拖拽
+          scaleLimit: {
+            min: 0.2,
+            max: 3
           },
-          label: {
-            show: true,
-            position: 'bottom',
-            distance: 12,
-            fontSize: isFullscreen ? 16 : 14,  // 🔥 增大字体
-            color: '#ffffff',
-            fontWeight: 'bold',
-            fontFamily: 'JetBrains Mono, monospace',
-            formatter: (params: any) => {
-              const name = params.name || '';
-              return name.length > 18 ? name.substring(0, 18) + '...' : name;
-            }
-          },
-          edgeShape: 'curve',
+          zoom: 1.2,  // 🔥 初始缩放为120%，充分展示节点间距，让图谱更清晰
           edgeSymbol: ['none', 'arrow'],
-          edgeSymbolSize: [0, 18],
-          lineStyle: {
-            color: {
-              type: 'linear',
-              x: 0,
-              y: 0,
-              x2: 1,
-              y2: 0,
-              colorStops: [
-                { offset: 0, color: '#FF8C00' },
-                { offset: 0.25, color: '#FFD700' },
-                { offset: 0.5, color: '#FFA500' },
-                { offset: 0.75, color: '#FFD700' },
-                { offset: 1, color: '#FF8C00' }
-              ]
-            },
-            width: 5,
-            curveness: 0.5,
-            shadowBlur: 30,
-            shadowColor: '#FFD700',
-            opacity: 1
-          },
+          edgeSymbolSize: [0, 15],
+          animation: true,
+          animationDuration: 800,
+          animationEasing: 'elasticOut',
+          animationDelay: (idx: number) => idx * 150,
           emphasis: {
-            focus: 'ancestor',
+            focus: 'adjacency',
             itemStyle: {
               borderWidth: 3,
               shadowBlur: 35
             },
             lineStyle: {
-              width: 6
-            }
-          },
-          animation: true,
-          animationDuration: 800,
-          animationEasing: 'elasticOut',
-          animationDelay: (idx: number) => idx * 150,
-          roam: true,  // 🔥 启用滚轮缩放和拖动平移
-          scaleLimit: {
-            min: 0.3,
-            max: 3
-          },
-          expandAndCollapse: false,
-          initialTreeDepth: -1,
-          leaves: {
-            label: {
-              position: 'right',
-              verticalAlign: 'middle',
-              align: 'left'
+              width: 7
             }
           }
         } as any
@@ -559,28 +670,15 @@ const PIDSGraph: React.FC<PIDSGraphProps> = ({
     // 🔥 使用notMerge: true实现完全重新渲染，触发初始动画
     chartInstanceRef.current.setOption(option, {
       notMerge: true,  // 完全重新渲染，触发初始动画
-      lazyUpdate: false,
-      silent: false
+      lazyUpdate: false
+    });
+    
+    // 🔥 确保图表可以接收交互事件
+    chartInstanceRef.current.getZr().on('mousewheel', (e: any) => {
+      console.log('🖱️ 检测到滚轮事件');
     });
     
     console.log('📊 树状图配置已设置，节点数:', nodes.length);
-
-    // 🔥 真正的逐个绘制进度显示（与animationDelay同步）
-    setDisplayedNodeCount(0);
-    let currentCount = 0;
-    const totalNodes = nodes.length;
-    const drawInterval = 150;  // 每150ms绘制一个节点（与animationDelay一致）
-    
-    const updateProgress = () => {
-      if (currentCount < totalNodes) {
-        currentCount++;
-        setDisplayedNodeCount(currentCount);
-        animationTimerRef.current = setTimeout(updateProgress, drawInterval);
-      }
-    };
-    
-    // 开始进度更新
-    animationTimerRef.current = setTimeout(updateProgress, drawInterval);
 
     // 节点点击事件
     chartInstanceRef.current.off('click');
@@ -646,8 +744,13 @@ const PIDSGraph: React.FC<PIDSGraphProps> = ({
     setTimeout(() => {
       if (chartInstanceRef.current) {
         chartInstanceRef.current.resize();
+        // 🔥 重新获取并设置option，确保图谱正确显示
+        const currentOption = chartInstanceRef.current.getOption();
+        if (currentOption) {
+          chartInstanceRef.current.setOption(currentOption, { notMerge: false });
+        }
       }
-    }, 100);
+    }, 150);
   };
 
   return (
@@ -738,26 +841,6 @@ const PIDSGraph: React.FC<PIDSGraphProps> = ({
           }} 
         />
         
-        {/* 逐条绘制进度提示 */}
-        {graphData && graphData.nodes && displayedNodeCount < graphData.nodes.length && (
-          <div style={{
-            position: 'absolute',
-            top: '20px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            backgroundColor: 'rgba(24, 144, 255, 0.9)',
-            color: '#fff',
-            padding: '8px 16px',
-            borderRadius: '20px',
-            fontSize: '12px',
-            fontWeight: 'bold',
-            zIndex: 100,
-            boxShadow: '0 0 20px rgba(24, 144, 255, 0.5)'
-          }}>
-            🎨 正在绘制节点: {displayedNodeCount} / {graphData.nodes.length}
-          </div>
-        )}
-
         {/* 🔥 底部悬浮图例栏（赛博朋克风格）*/}
         {graphData && graphData.nodes && graphData.nodes.length > 0 && (
           <div style={{
