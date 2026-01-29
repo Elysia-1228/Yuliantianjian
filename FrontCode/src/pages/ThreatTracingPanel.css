@@ -1,0 +1,83 @@
+/* 🔥 只优化右侧详情面板的字体，不影响溯源图 */
+
+/* 详情面板标题 */
+.cyber-detail-panel .panel-title {
+  font-size: 2rem !important; /* 32px */
+  line-height: 2.5rem !important;
+}
+
+.cyber-detail-panel .panel-subtitle {
+  font-size: 1.125rem !important; /* 18px */
+  margin-top: 0.5rem !important;
+}
+
+/* 详情面板图标 */
+.cyber-detail-panel .panel-icon-large {
+  width: 5rem !important; /* 80px */
+  height: 5rem !important;
+}
+
+.cyber-detail-panel .panel-icon-medium {
+  width: 3rem !important; /* 48px */
+  height: 3rem !important;
+}
+
+/* 攻击源IP */
+.cyber-detail-panel .attack-ip-label {
+  font-size: 1.125rem !important; /* 18px */
+}
+
+.cyber-detail-panel .attack-ip-value {
+  font-size: 2.25rem !important; /* 36px */
+}
+
+.cyber-detail-panel .attack-stats {
+  font-size: 1rem !important; /* 16px */
+}
+
+/* 内容区域标题 */
+.cyber-detail-panel .content-label {
+  font-size: 1rem !important; /* 16px */
+  font-weight: 600 !important;
+}
+
+/* 内容区域数值 */
+.cyber-detail-panel .content-value-large {
+  font-size: 2.25rem !important; /* 36px */
+}
+
+.cyber-detail-panel .content-value-medium {
+  font-size: 1.25rem !important; /* 20px */
+}
+
+.cyber-detail-panel .content-value-small {
+  font-size: 1rem !important; /* 16px */
+}
+
+/* 威胁等级 */
+.cyber-detail-panel .threat-level {
+  font-size: 1.875rem !important; /* 30px */
+}
+
+/* 威胁分布列表 */
+.cyber-detail-panel .threat-item-name {
+  font-size: 1.125rem !important; /* 18px */
+}
+
+.cyber-detail-panel .threat-item-count {
+  font-size: 1.125rem !important; /* 18px */
+}
+
+/* 目标IP列表 */
+.cyber-detail-panel .target-ip {
+  font-size: 1.125rem !important; /* 18px */
+}
+
+.cyber-detail-panel .target-label {
+  font-size: 1rem !important; /* 16px */
+}
+
+/* 底部统计 */
+.cyber-detail-panel .bottom-stats {
+  font-size: 1rem !important; /* 16px */
+}

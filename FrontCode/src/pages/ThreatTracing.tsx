@@ -288,13 +288,13 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
         const nodeSet = new Set();
         
         aggregation.alerts.forEach((alert, idx) => {
-          const attackerId = `attacker_${alert.sourceIp}`;
-          const targetId = `target_${alert.destIp}`;
+          const attackerId = `attacker_${alert.sourceIp || 'unknown'}`;
+          const targetId = `target_${alert.destIp || alert.sourceIp || 'unknown'}`;
           
           if (!nodeSet.has(attackerId)) {
             nodes.push({ 
               id: attackerId, 
-              label: alert.sourceIp, 
+              label: alert.sourceIp || 'unknown', 
               type: 'attacker',
               category: 0,
               timestamp: alert.occurTime || new Date().toISOString()
@@ -304,7 +304,7 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
           if (!nodeSet.has(targetId)) {
             nodes.push({ 
               id: targetId, 
-              label: alert.destIp, 
+              label: alert.destIp || alert.sourceIp || 'unknown', 
               type: 'process',
               category: 1,
               timestamp: alert.occurTime || new Date().toISOString(),
