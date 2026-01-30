@@ -244,3 +244,64 @@ body {
 .animate-scan-line {
   animation: scanLine 2s ease-in-out infinite;
 }
+
+/* 呼吸灯动画 - 用于高危特征点 */
+@keyframes breathe {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 10px rgba(239,68,68,1), 0 0 20px rgba(239,68,68,0.8), 0 0 30px rgba(239,68,68,0.4);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.05);
+    box-shadow: 0 0 15px rgba(239,68,68,1), 0 0 30px rgba(239,68,68,0.9), 0 0 45px rgba(239,68,68,0.6);
+  }
+}
+
+/* 激光流光扫过效果 */
+@keyframes laser {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+/* 文字滚动效果 */
+@keyframes scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+/* 打字机效果 */
+@keyframes typing {
+  from {
+    width: 0;
+    opacity: 0;
+  }
+  to {
+    width: 100%;
+    opacity: 1;
+  }
+}
+
+/* 右侧面板滚动优化 */
+.overflow-y-overlay {
+  overflow-y: overlay;
+  scrollbar-gutter: stable;
+}
+
+/* 毛玻璃效果增强 */
+.glass-enhanced {
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(6, 182, 212, 0.2);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}

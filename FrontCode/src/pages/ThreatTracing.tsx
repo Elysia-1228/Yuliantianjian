@@ -428,8 +428,8 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
         ))}
       </div>
 
-      {/* 内容区域 */}
-      <div className="flex-1 overflow-y-auto p-4 bg-slate-800/30 mx-4 mb-4 rounded-b-lg border border-t-0 border-slate-700/50">
+      {/* 内容区域 - 优化滚动 */}
+      <div className="flex-1 overflow-y-overlay p-4 bg-slate-800/30 mx-4 mb-4 rounded-b-lg border border-t-0 border-slate-700/50 scrollbar-thin">
         {activeTab === 'overview' && (
           <div className="space-y-3 animate-fadeIn">
             {/* 130维特征热力图 - 分组展示 */}
@@ -446,29 +446,47 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                   </div>
                   <div>
                     <div className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400 tracking-tight">
-                      AI特征提取引擎
+                      多维异常提取引擎
                     </div>
-                    <div className="text-xs text-slate-400 font-mono mt-0.5">130-Dimension Feature Extraction Engine</div>
+                    <div className="text-xs text-slate-400 font-mono mt-0.5">130维原始行为特征全景图</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-4 text-xs">
                   <div className="flex items-center gap-2 px-3 py-1.5 bg-cyan-500/10 rounded-lg border border-cyan-500/30">
                     <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse" />
-                    <span className="text-cyan-300 font-mono font-bold">{rawVector.length} DIMS</span>
+                    <span className="text-cyan-300 font-mono font-bold">{rawVector.length} 维特征</span>
                   </div>
                   <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-500/10 rounded-lg border border-purple-500/30">
                     <Zap size={12} className="text-purple-400" />
-                    <span className="text-purple-300 font-mono">NetworkX Algorithm</span>
+                    <span className="text-purple-300 font-mono">图论算法引擎</span>
                   </div>
                   <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/10 rounded-lg border border-green-500/30">
                     <CheckCircle size={12} className="text-green-400" />
-                    <span className="text-green-300 font-mono">Real-time</span>
+                    <span className="text-green-300 font-mono">实时提取</span>
                   </div>
                 </div>
               </div>
               
-              {/* 分组热力图 */}
+              {/* 130维特征矩阵 - 带色卡图例 */}
               <div className="relative z-10 space-y-3">
+                {/* 色卡图例 */}
+                <div className="flex items-center gap-3 mb-2 p-3 bg-slate-900/50 rounded-lg border border-slate-700/30">
+                  <span className="text-xs text-slate-400 font-bold">特征强度图例：</span>
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-4 h-3 rounded bg-gradient-to-r from-cyan-400/30 to-cyan-600/30 border border-cyan-500/50" />
+                      <span className="text-[10px] text-cyan-300">正常 (0-0.3)</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-4 h-3 rounded bg-gradient-to-r from-yellow-400/50 to-orange-500/50 border border-orange-500/50" />
+                      <span className="text-[10px] text-orange-300">警告 (0.3-0.7)</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-4 h-3 rounded bg-gradient-to-r from-red-500/70 to-red-600/70 border border-red-500/70 shadow-lg shadow-red-500/50" />
+                      <span className="text-[10px] text-red-300">高危 (0.7-1.0)</span>
+                    </div>
+                  </div>
+                </div>
                 {FEATURE_GROUPS.map((group, groupIdx) => {
                   const isHovered = hoveredFeature === group.key;
                   const groupVector = rawVector.slice(group.range[0], group.range[1] + 1);
@@ -502,6 +520,8 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                                   isScanning ? 'animate-pulse ring-1 ring-cyan-400' : ''
                                 } ${
                                   isHovered ? 'scale-y-110' : ''
+                                } ${
+                                  intensity > 0.8 ? 'animate-[breathe_2s_ease-in-out_infinite]' : ''
                                 }`}
                                 style={{
                                   backgroundColor: isScanned
@@ -509,6 +529,8 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                                     : 'rgba(30,41,59,0.4)',
                                   boxShadow: isScanning
                                     ? '0 0 8px rgba(6,182,212,1), 0 0 16px rgba(6,182,212,0.5)'
+                                    : intensity > 0.8
+                                    ? '0 0 10px rgba(239,68,68,1), 0 0 20px rgba(239,68,68,0.8), 0 0 30px rgba(239,68,68,0.4)'
                                     : intensity > 0.7
                                     ? '0 0 6px rgba(239,68,68,0.8), 0 0 12px rgba(239,68,68,0.4)'
                                     : intensity > 0.5
@@ -535,25 +557,25 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                 })}
               </div>
               
-              {/* 图例 */}
-              <div className="relative z-10 mt-4 pt-3 border-t border-cyan-500/20 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-3 h-3 rounded bg-gradient-to-br from-cyan-400 to-cyan-600 shadow-lg shadow-cyan-500/50" />
-                    <span className="text-xs text-cyan-300 font-medium">正常</span>
+              {/* AI溯源判定报告面板 */}
+              <div className="relative z-10 mt-4 pt-4 border-t border-cyan-500/20">
+                <div className="bg-gradient-to-br from-slate-900/90 to-slate-800/80 rounded-xl p-4 border border-cyan-500/30 shadow-xl shadow-cyan-500/10">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Terminal size={16} className="text-cyan-400" />
+                    <span className="text-sm font-bold text-cyan-300">AI 溯源判定报告</span>
+                    <div className="flex-1 h-px bg-gradient-to-r from-cyan-500/50 to-transparent" />
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-3 h-3 rounded bg-gradient-to-br from-orange-400 to-orange-600 shadow-lg shadow-orange-500/50" />
-                    <span className="text-xs text-orange-300 font-medium">警告</span>
+                  <div className="text-xs leading-relaxed text-slate-300 font-mono space-y-1">
+                    <p className="animate-[typing_2s_steps(60)_1s_both]">
+                      <span className="text-cyan-400">▶</span> AI 引擎已完成 <span className="text-cyan-400 font-bold">{rawVector.length} 维</span>特征提取
+                    </p>
+                    <p className="animate-[typing_2s_steps(60)_2s_both] opacity-0">
+                      <span className="text-yellow-400">▶</span> 判定结论：该 IP 正在通过 <span className="text-red-400 font-bold">PHP-FPM 漏洞</span>执行远程命令提权
+                    </p>
+                    <p className="animate-[typing_2s_steps(60)_3s_both] opacity-0">
+                      <span className="text-red-400">▶</span> 威胁等级：<span className="text-red-400 font-black animate-pulse">极高</span> | 建议：<span className="text-orange-400 font-bold">立即隔离节点</span>
+                    </p>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-3 h-3 rounded bg-gradient-to-br from-red-400 to-red-600 shadow-lg shadow-red-500/50" />
-                    <span className="text-xs text-red-300 font-medium">高危</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 text-xs text-slate-400">
-                  <div className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-                  <span className="font-mono">Live Extraction</span>
                 </div>
               </div>
             </div>
@@ -591,6 +613,16 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                     isHigh ? 'bg-[radial-gradient(circle_at_50%_50%,rgba(251,146,60,0.15),transparent_70%)]' :
                     'bg-[radial-gradient(circle_at_50%_50%,rgba(6,182,212,0.1),transparent_70%)]'
                   }`} />
+                  {/* 实时子项滚动展示 */}
+                  <div className="relative z-10 mb-2 overflow-hidden">
+                    <div className="text-[10px] text-cyan-300 font-mono animate-[scroll_10s_linear_infinite] whitespace-nowrap">
+                      {group.key === 'semantic' && '[检测到敏感指令: cat /etc/shadow] [发现编码绕过: Base64]'}
+                      {group.key === 'sequence' && '[异常时序模式] [快速连续执行] [夜间活动峰值]'}
+                      {group.key === 'edge' && '[异常连接数激增] [跨区域通信] [非标准端口]'}
+                      {group.key === 'structure' && '[图谱拓扑异常] [孤立节点] [环形结构]'}
+                      {group.key === 'node' && '[进程节点异常] [文件访问异常] [网络套接字异常]'}
+                    </div>
+                  </div>
                   <div className="relative z-10 flex items-center justify-between text-sm mb-3">
                     <div className="flex items-center gap-2">
                       <div className={`w-1.5 h-1.5 rounded-full ${
@@ -601,15 +633,27 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                       <span className={`font-bold ${
                         isCritical || isHigh ? 'text-red-300' : 'text-slate-200'
                       }`}>
-                        {group.name}
+                        {group.key === 'structure' ? '图谱拓扑特征' : 
+                         group.key === 'node' ? '节点实体分布' :
+                         group.key === 'edge' ? '行为路径关联' :
+                         group.key === 'sequence' ? '时序行为指纹' :
+                         group.key === 'semantic' ? '攻击语义向量' : group.name}
                       </span>
                       {isCritical && (
                         <span className="px-2 py-0.5 text-[10px] font-black bg-red-500/50 text-red-100 border border-red-400 rounded-md animate-pulse shadow-lg shadow-red-500/50">
-                          CRITICAL
+                          极危
                         </span>
                       )}
                     </div>
                     <div className="flex items-center gap-3">
+                      {/* 偏离率发光标签 */}
+                      <div className={`px-3 py-1 rounded-full font-black text-xs ${
+                        ratio > 5 ? 'bg-gradient-to-r from-red-600 to-orange-600 text-white shadow-lg shadow-red-500/50 animate-pulse' :
+                        ratio > 2.5 ? 'bg-gradient-to-r from-orange-500 to-yellow-500 text-white shadow-lg shadow-orange-500/40' :
+                        'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg shadow-cyan-500/30'
+                      }`}>
+                        +{((ratio - 1) * 100).toFixed(0)}%
+                      </div>
                       <span className={`text-lg font-black font-mono ${
                         isCritical ? 'text-red-400 drop-shadow-[0_0_10px_rgba(239,68,68,1)]' :
                         isHigh ? 'text-orange-400 drop-shadow-[0_0_8px_rgba(251,146,60,0.8)]' :
@@ -618,13 +662,16 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                       <Eye size={14} className="text-slate-400 hover:text-cyan-300 transition-colors" />
                     </div>
                   </div>
-                  <div className="relative z-10 h-2 bg-slate-900/80 rounded-full overflow-hidden shadow-inner">
+                  {/* 激光流光进度条 */}
+                  <div className="relative z-10 h-3 bg-slate-900/80 rounded-full overflow-hidden shadow-inner">
+                    {/* 基线标记 */}
                     <div 
                       className="absolute top-0 h-full w-1 bg-yellow-400 z-10 rounded-full" 
                       style={{ left: `${baselinePos}%`, boxShadow: '0 0 8px rgba(250,204,21,1), 0 0 16px rgba(250,204,21,0.5)' }} 
                     />
+                    {/* 进度条主体 */}
                     <div 
-                      className={`absolute h-full rounded-full transition-all duration-700 ${
+                      className={`absolute h-full rounded-full transition-all duration-700 relative overflow-hidden ${
                         isCritical
                           ? 'bg-gradient-to-r from-red-600 via-red-500 to-orange-500 animate-pulse'
                           : isHigh 
@@ -638,13 +685,23 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                           : isHigh 
                           ? '0 0 12px rgba(251,146,60,0.8), 0 0 24px rgba(251,146,60,0.4), inset 0 0 8px rgba(255,255,255,0.2)' 
                           : '0 0 10px rgba(6,182,212,0.6), 0 0 20px rgba(6,182,212,0.3), inset 0 0 6px rgba(255,255,255,0.2)' 
-                      }} 
-                    />
+                      }}
+                    >
+                      {/* 激光流光扫过效果 */}
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent animate-[laser_2s_ease-in-out_infinite]" style={{ width: '30%' }} />
+                    </div>
                   </div>
-                  {/* 实时数值显示 */}
-                  <div className="relative z-10 mt-3 text-[10px] font-mono flex items-center justify-between px-2 py-1.5 bg-slate-950/50 rounded-lg border border-slate-700/30">
-                    <span className="text-slate-400">Current: <span className="text-cyan-300 font-bold">{data.current.toFixed(3)}</span></span>
-                    <span className="text-slate-400">Base: <span className="text-yellow-300 font-bold">{data.baseline.toFixed(3)}</span></span>
+                  {/* 基线对比数值化 */}
+                  <div className="relative z-10 mt-3 text-[10px] font-mono flex items-center justify-between px-3 py-2 bg-slate-950/60 rounded-lg border border-slate-700/40">
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-500">当前测算值:</span>
+                      <span className="text-cyan-300 font-bold">{data.current.toFixed(3)}</span>
+                    </div>
+                    <div className="h-3 w-px bg-slate-700" />
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-500">历史基线:</span>
+                      <span className="text-yellow-300 font-bold">{data.baseline.toFixed(3)}</span>
+                    </div>
                   </div>
                 </div>
               );
