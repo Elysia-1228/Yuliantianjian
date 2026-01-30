@@ -570,13 +570,22 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                       <span className="text-cyan-400">▶</span> AI 引擎已完成 <span className="text-cyan-400 font-bold">{rawVector.length} 维</span>特征提取
                     </p>
                     <p className="animate-[typing_2s_steps(60)_2s_both] opacity-0">
-                      <span className="text-yellow-400">▶</span> 判定结论：该 IP 来自 <span className="text-cyan-400 font-bold">{aggregation.sourceIp}</span>，检测到 <span className="text-red-400 font-bold">{aggregation.count} 次</span>攻击行为
+                      <span className="text-yellow-400">▶</span> 判定结论：该 IP <span className="text-cyan-400 font-bold">{aggregation.sourceIp}</span> 发起 <span className="text-red-400 font-bold">{aggregation.count} 次</span>攻击
                     </p>
                     <p className="animate-[typing_2s_steps(60)_3s_both] opacity-0">
-                      <span className="text-red-400">▶</span> 威胁等级：<span className={`font-black ${
-                        anomalyScore > 0.8 ? 'text-red-400 animate-pulse' : 
+                      <span className="text-purple-400">▶</span> 攻击路径：<span className="text-slate-300">{aggregation.targetIps.slice(0, 2).join(' → ')}</span>
+                    </p>
+                    <p className="animate-[typing_2s_steps(60)_4s_both] opacity-0">
+                      <span className="text-orange-400">▶</span> 主要手段：<span className="text-red-400 font-bold">{aggregation.threatTypes.slice(0, 2).join('、')}</span>
+                    </p>
+                    <p className="animate-[typing_2s_steps(60)_5s_both] opacity-0">
+                      <span className="text-red-400">▶</span> 异常评分：<span className={`font-black ${
+                        anomalyScore > 0.8 ? 'text-red-400' : 
                         anomalyScore > 0.5 ? 'text-orange-400' : 'text-yellow-400'
-                      }`}>{anomalyScore > 0.8 ? '极高' : anomalyScore > 0.5 ? '高' : '中'}</span> | 综合评分：<span className="text-orange-400 font-bold">{(anomalyScore * 100).toFixed(1)}分</span>
+                      }`}>{(anomalyScore * 100).toFixed(1)}%</span> | 威胁等级：<span className={`font-black ${
+                        anomalyScore > 0.8 ? 'text-red-400' : 
+                        anomalyScore > 0.5 ? 'text-orange-400' : 'text-yellow-400'
+                      }`}>{anomalyScore > 0.8 ? '极高' : anomalyScore > 0.5 ? '高' : '中'}</span>
                     </p>
                   </div>
                 </div>
@@ -605,7 +614,7 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                   className={`relative bg-gradient-to-br from-slate-900/80 to-slate-800/60 rounded-xl p-4 border-2 transition-all duration-500 cursor-pointer overflow-hidden ${
                     isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-8'
                   } ${
-                    isCritical ? 'border-red-500/70 bg-gradient-to-br from-red-950/40 to-red-900/30 shadow-2xl shadow-red-500/30 animate-pulse' : 
+                    isCritical ? 'border-red-500/70 bg-gradient-to-br from-red-950/40 to-red-900/30 shadow-2xl shadow-red-500/30' : 
                     isHigh ? 'border-red-500/50 bg-gradient-to-br from-red-950/30 to-red-900/20 shadow-xl shadow-red-500/20' : 
                     'border-slate-700/50 hover:border-cyan-500/60 hover:shadow-xl hover:shadow-cyan-500/20'
                   }`}
@@ -643,21 +652,12 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                          group.key === 'semantic' ? '攻击语义向量' : group.name}
                       </span>
                       {isCritical && (
-                        <span className="px-2 py-0.5 text-[10px] font-black bg-red-500/50 text-red-100 border border-red-400 rounded-md animate-pulse shadow-lg shadow-red-500/50">
+                        <span className="px-2 py-0.5 text-[10px] font-black bg-red-500/50 text-red-100 border border-red-400 rounded-md shadow-lg shadow-red-500/50">
                           极危
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-3">
-                      {/* 偏离率发光标签 - 修正显示逻辑 */}
-                      <div className={`px-3 py-1 rounded-full font-black text-xs ${
-                        ratio > 5 ? 'bg-gradient-to-r from-red-600 to-orange-600 text-white shadow-lg shadow-red-500/50 animate-pulse' :
-                        ratio > 2.5 ? 'bg-gradient-to-r from-orange-500 to-yellow-500 text-white shadow-lg shadow-orange-500/40' :
-                        ratio >= 1 ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg shadow-cyan-500/30' :
-                        'bg-gradient-to-r from-green-500 to-cyan-500 text-white shadow-lg shadow-green-500/30'
-                      }`}>
-                        {ratio >= 1 ? `+${((ratio - 1) * 100).toFixed(0)}%` : `${((ratio - 1) * 100).toFixed(0)}%`}
-                      </div>
+                    <div className="flex items-center gap-2">
                       <span className={`text-lg font-black font-mono ${
                         isCritical ? 'text-red-400 drop-shadow-[0_0_10px_rgba(239,68,68,1)]' :
                         isHigh ? 'text-orange-400 drop-shadow-[0_0_8px_rgba(251,146,60,0.8)]' :
@@ -735,7 +735,7 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                          detailModal.feature?.key === 'sequence' ? '时序行为指纹' :
                          detailModal.feature?.key === 'semantic' ? '攻击语义向量' : detailModal.feature?.name}
                       </div>
-                      <div className="text-[10px] text-slate-400 font-mono mt-1">Top 3 显著子特征分析</div>
+                      <div className="text-[10px] text-slate-400 font-mono mt-1">所有子特征详细分析 ({detailModal.top3.length} 项)</div>
                     </div>
                     <button 
                       onClick={() => setDetailModal({ visible: false, feature: null, top3: [] })}
@@ -743,46 +743,74 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                     >×</button>
                   </div>
                   
-                  {/* Top3列表 - 中文化紧凑布局 */}
-                  <div className="relative z-10 space-y-3">
-                    {detailModal.top3.map((item, idx) => {
-                      // 特征名称中文映射
-                      const featureNameMap: Record<string, string> = {
-                        'node_count': '节点总数', 'edge_count': '边总数', 'node_edge_ratio': '节点边比率',
-                        'process_node_count': '进程节点数', 'attacker_node_count': '攻击源节点',
-                        'file_node_count': '文件节点数', 'socket_node_count': '网络套接字',
-                        'exec_edge_count': '执行边数', 'read_edge_count': '读取边数',
-                        'write_edge_count': '写入边数', 'connect_edge_count': '连接边数',
-                        'time_span_seconds': '时间跨度(秒)', 'burst_count': '突发次数',
-                        'night_activity': '夜间活动', 'rce_score': '远程执行评分',
-                        'webshell_score': 'WebShell评分', 'privilege_escalation_score': '提权评分',
-                        'sensitive_file_access_count': '敏感文件访问', 'critical_process_count': '关键进程数'
-                      };
-                      const chineseName = featureNameMap[item.name] || item.name;
-                      
-                      return (
-                        <div key={idx} className="bg-gradient-to-r from-slate-900/80 to-slate-800/60 rounded-lg p-3 border border-slate-700/50 hover:border-cyan-500/50 transition-all shadow-lg">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2 flex-1">
-                              <div className="w-6 h-6 rounded-md bg-gradient-to-br from-cyan-500 to-purple-500 flex items-center justify-center text-white text-xs font-black shadow-lg">
-                                {idx + 1}
-                              </div>
-                              <span className="text-xs font-bold text-slate-200">{chineseName}</span>
-                            </div>
-                            <span className="text-sm font-black font-mono text-cyan-400 drop-shadow-[0_0_8px_rgba(6,182,212,0.8)]">{item.score}</span>
-                          </div>
-                          <div className="h-1.5 bg-slate-900/80 rounded-full overflow-hidden shadow-inner">
-                            <div 
-                              className="h-full bg-gradient-to-r from-cyan-500 via-blue-500 to-purple-500 rounded-full transition-all duration-1000"
-                              style={{ 
-                                width: `${Math.min(parseFloat(item.score) * 200, 100)}%`,
-                                boxShadow: '0 0 10px rgba(6,182,212,0.6), 0 0 20px rgba(6,182,212,0.3), inset 0 0 6px rgba(255,255,255,0.2)'
-                              }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
+                  {/* 所有子特征列表 - 全新表格UI */}
+                  <div className="relative z-10 max-h-[400px] overflow-y-auto scrollbar-thin">
+                    <table className="w-full">
+                      <thead className="sticky top-0 bg-slate-900/95 backdrop-blur-sm z-10">
+                        <tr className="border-b border-cyan-500/30">
+                          <th className="text-left py-2 px-3 text-[10px] font-bold text-cyan-300">序号</th>
+                          <th className="text-left py-2 px-3 text-[10px] font-bold text-cyan-300">特征名称</th>
+                          <th className="text-right py-2 px-3 text-[10px] font-bold text-cyan-300">特征值</th>
+                          <th className="text-right py-2 px-3 text-[10px] font-bold text-cyan-300">强度</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {detailModal.top3.map((item, idx) => {
+                          // 特征名称中文映射
+                          const featureNameMap: Record<string, string> = {
+                            'node_count': '节点总数', 'edge_count': '边总数', 'node_edge_ratio': '节点边比率',
+                            'avg_degree': '平均度数', 'density': '图密度', 'diameter': '图直径',
+                            'avg_clustering': '平均聚类系数', 'connected_components': '连通分量',
+                            'process_node_count': '进程节点数', 'attacker_node_count': '攻击源节点',
+                            'file_node_count': '文件节点数', 'socket_node_count': '网络套接字',
+                            'server_node_count': '服务器节点', 'other_node_count': '其他节点',
+                            'exec_edge_count': '执行边数', 'read_edge_count': '读取边数',
+                            'write_edge_count': '写入边数', 'connect_edge_count': '连接边数',
+                            'fork_edge_count': '分支边数', 'other_edge_count': '其他边数',
+                            'time_span_seconds': '时间跨度(秒)', 'burst_count': '突发次数',
+                            'night_activity': '夜间活动', 'operation_entropy': '操作熄',
+                            'rce_score': '远程执行评分', 'webshell_score': 'WebShell评分',
+                            'privilege_escalation_score': '提权评分', 'sql_injection_score': 'SQL注入评分',
+                            'sensitive_file_access_count': '敏感文件访问', 'critical_process_count': '关键进程数'
+                          };
+                          const chineseName = featureNameMap[item.name] || item.name;
+                          const scoreVal = parseFloat(item.score);
+                          const intensity = Math.min(scoreVal * 100, 100);
+                          
+                          return (
+                            <tr key={idx} className="border-b border-slate-700/30 hover:bg-slate-800/50 transition-colors">
+                              <td className="py-2 px-3">
+                                <div className="w-6 h-6 rounded bg-gradient-to-br from-cyan-500 to-purple-500 flex items-center justify-center text-white text-[10px] font-black">
+                                  {idx + 1}
+                                </div>
+                              </td>
+                              <td className="py-2 px-3 text-xs text-slate-200">{chineseName}</td>
+                              <td className="py-2 px-3 text-right">
+                                <span className="text-xs font-mono text-cyan-400 font-bold">{item.score}</span>
+                              </td>
+                              <td className="py-2 px-3 text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  <div className="w-16 h-1.5 bg-slate-900/80 rounded-full overflow-hidden">
+                                    <div 
+                                      className={`h-full rounded-full transition-all duration-500 ${
+                                        scoreVal > 0.7 ? 'bg-gradient-to-r from-red-500 to-orange-500' :
+                                        scoreVal > 0.4 ? 'bg-gradient-to-r from-orange-500 to-yellow-500' :
+                                        'bg-gradient-to-r from-cyan-500 to-blue-500'
+                                      }`}
+                                      style={{ width: `${intensity}%` }}
+                                    />
+                                  </div>
+                                  <span className={`text-[10px] font-bold ${
+                                    scoreVal > 0.7 ? 'text-red-400' :
+                                    scoreVal > 0.4 ? 'text-orange-400' : 'text-cyan-400'
+                                  }`}>{intensity.toFixed(0)}%</span>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               </div>
