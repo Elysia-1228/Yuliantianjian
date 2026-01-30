@@ -570,10 +570,13 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                       <span className="text-cyan-400">▶</span> AI 引擎已完成 <span className="text-cyan-400 font-bold">{rawVector.length} 维</span>特征提取
                     </p>
                     <p className="animate-[typing_2s_steps(60)_2s_both] opacity-0">
-                      <span className="text-yellow-400">▶</span> 判定结论：该 IP 正在通过 <span className="text-red-400 font-bold">PHP-FPM 漏洞</span>执行远程命令提权
+                      <span className="text-yellow-400">▶</span> 判定结论：该 IP 来自 <span className="text-cyan-400 font-bold">{aggregation.sourceIp}</span>，检测到 <span className="text-red-400 font-bold">{aggregation.count} 次</span>攻击行为
                     </p>
                     <p className="animate-[typing_2s_steps(60)_3s_both] opacity-0">
-                      <span className="text-red-400">▶</span> 威胁等级：<span className="text-red-400 font-black animate-pulse">极高</span> | 建议：<span className="text-orange-400 font-bold">立即隔离节点</span>
+                      <span className="text-red-400">▶</span> 威胁等级：<span className={`font-black ${
+                        anomalyScore > 0.8 ? 'text-red-400 animate-pulse' : 
+                        anomalyScore > 0.5 ? 'text-orange-400' : 'text-yellow-400'
+                      }`}>{anomalyScore > 0.8 ? '极高' : anomalyScore > 0.5 ? '高' : '中'}</span> | 综合评分：<span className="text-orange-400 font-bold">{(anomalyScore * 100).toFixed(1)}分</span>
                     </p>
                   </div>
                 </div>
@@ -646,13 +649,14 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                       )}
                     </div>
                     <div className="flex items-center gap-3">
-                      {/* 偏离率发光标签 */}
+                      {/* 偏离率发光标签 - 修正显示逻辑 */}
                       <div className={`px-3 py-1 rounded-full font-black text-xs ${
                         ratio > 5 ? 'bg-gradient-to-r from-red-600 to-orange-600 text-white shadow-lg shadow-red-500/50 animate-pulse' :
                         ratio > 2.5 ? 'bg-gradient-to-r from-orange-500 to-yellow-500 text-white shadow-lg shadow-orange-500/40' :
-                        'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg shadow-cyan-500/30'
+                        ratio >= 1 ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg shadow-cyan-500/30' :
+                        'bg-gradient-to-r from-green-500 to-cyan-500 text-white shadow-lg shadow-green-500/30'
                       }`}>
-                        +{((ratio - 1) * 100).toFixed(0)}%
+                        {ratio >= 1 ? `+${((ratio - 1) * 100).toFixed(0)}%` : `${((ratio - 1) * 100).toFixed(0)}%`}
                       </div>
                       <span className={`text-lg font-black font-mono ${
                         isCritical ? 'text-red-400 drop-shadow-[0_0_10px_rgba(239,68,68,1)]' :
@@ -714,51 +718,71 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                 onClick={() => setDetailModal({ visible: false, feature: null, top3: [] })}
               >
                 <div 
-                  className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 border-2 border-cyan-500/50 rounded-2xl p-8 w-[500px] shadow-2xl shadow-cyan-500/20 animate-fadeIn"
+                  className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 border-2 border-cyan-500/50 rounded-xl p-6 w-[420px] shadow-2xl shadow-cyan-500/20 animate-fadeIn"
                   onClick={(e) => e.stopPropagation()}
                 >
                   {/* 背景光效 */}
                   <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(6,182,212,0.15),transparent_50%)]" />
                   <div className="absolute inset-0 bg-[radial-gradient(circle_at_0%_100%,rgba(168,85,247,0.1),transparent_50%)]" />
                   
-                  {/* 标题 */}
-                  <div className="relative z-10 mb-6 flex items-center justify-between">
+                  {/* 标题 - 紧凑布局 */}
+                  <div className="relative z-10 mb-4 flex items-center justify-between">
                     <div>
-                      <div className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400">
-                        {detailModal.feature?.name}
+                      <div className="text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400">
+                        {detailModal.feature?.key === 'structure' ? '图谱拓扑特征' : 
+                         detailModal.feature?.key === 'node' ? '节点实体分布' :
+                         detailModal.feature?.key === 'edge' ? '行为路径关联' :
+                         detailModal.feature?.key === 'sequence' ? '时序行为指纹' :
+                         detailModal.feature?.key === 'semantic' ? '攻击语义向量' : detailModal.feature?.name}
                       </div>
-                      <div className="text-xs text-slate-400 font-mono mt-1">Top 3 显著子特征</div>
+                      <div className="text-[10px] text-slate-400 font-mono mt-1">Top 3 显著子特征分析</div>
                     </div>
                     <button 
                       onClick={() => setDetailModal({ visible: false, feature: null, top3: [] })}
-                      className="w-10 h-10 flex items-center justify-center rounded-lg bg-slate-800/50 border border-slate-700 text-slate-400 hover:text-red-400 hover:border-red-500/50 transition-all text-2xl"
+                      className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-800/50 border border-slate-700 text-slate-400 hover:text-red-400 hover:border-red-500/50 transition-all text-xl"
                     >×</button>
                   </div>
                   
-                  {/* Top3列表 */}
-                  <div className="relative z-10 space-y-4">
-                    {detailModal.top3.map((item, idx) => (
-                      <div key={idx} className="bg-gradient-to-r from-slate-900/80 to-slate-800/60 rounded-xl p-4 border border-slate-700/50 hover:border-cyan-500/50 transition-all shadow-lg">
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-purple-500 flex items-center justify-center text-white font-black shadow-lg">
-                              #{idx + 1}
+                  {/* Top3列表 - 中文化紧凑布局 */}
+                  <div className="relative z-10 space-y-3">
+                    {detailModal.top3.map((item, idx) => {
+                      // 特征名称中文映射
+                      const featureNameMap: Record<string, string> = {
+                        'node_count': '节点总数', 'edge_count': '边总数', 'node_edge_ratio': '节点边比率',
+                        'process_node_count': '进程节点数', 'attacker_node_count': '攻击源节点',
+                        'file_node_count': '文件节点数', 'socket_node_count': '网络套接字',
+                        'exec_edge_count': '执行边数', 'read_edge_count': '读取边数',
+                        'write_edge_count': '写入边数', 'connect_edge_count': '连接边数',
+                        'time_span_seconds': '时间跨度(秒)', 'burst_count': '突发次数',
+                        'night_activity': '夜间活动', 'rce_score': '远程执行评分',
+                        'webshell_score': 'WebShell评分', 'privilege_escalation_score': '提权评分',
+                        'sensitive_file_access_count': '敏感文件访问', 'critical_process_count': '关键进程数'
+                      };
+                      const chineseName = featureNameMap[item.name] || item.name;
+                      
+                      return (
+                        <div key={idx} className="bg-gradient-to-r from-slate-900/80 to-slate-800/60 rounded-lg p-3 border border-slate-700/50 hover:border-cyan-500/50 transition-all shadow-lg">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2 flex-1">
+                              <div className="w-6 h-6 rounded-md bg-gradient-to-br from-cyan-500 to-purple-500 flex items-center justify-center text-white text-xs font-black shadow-lg">
+                                {idx + 1}
+                              </div>
+                              <span className="text-xs font-bold text-slate-200">{chineseName}</span>
                             </div>
-                            <span className="text-sm font-bold text-slate-200">{item.name}</span>
+                            <span className="text-sm font-black font-mono text-cyan-400 drop-shadow-[0_0_8px_rgba(6,182,212,0.8)]">{item.score}</span>
                           </div>
-                          <span className="text-lg font-black font-mono text-cyan-400 drop-shadow-[0_0_8px_rgba(6,182,212,0.8)]">{item.score}</span>
+                          <div className="h-1.5 bg-slate-900/80 rounded-full overflow-hidden shadow-inner">
+                            <div 
+                              className="h-full bg-gradient-to-r from-cyan-500 via-blue-500 to-purple-500 rounded-full transition-all duration-1000"
+                              style={{ 
+                                width: `${Math.min(parseFloat(item.score) * 200, 100)}%`,
+                                boxShadow: '0 0 10px rgba(6,182,212,0.6), 0 0 20px rgba(6,182,212,0.3), inset 0 0 6px rgba(255,255,255,0.2)'
+                              }}
+                            />
+                          </div>
                         </div>
-                        <div className="h-2 bg-slate-900/80 rounded-full overflow-hidden shadow-inner">
-                          <div 
-                            className="h-full bg-gradient-to-r from-cyan-500 via-blue-500 to-purple-500 rounded-full transition-all duration-1000"
-                            style={{ 
-                              width: `${Math.min(parseFloat(item.score) * 200, 100)}%`,
-                              boxShadow: '0 0 10px rgba(6,182,212,0.6), 0 0 20px rgba(6,182,212,0.3), inset 0 0 6px rgba(255,255,255,0.2)'
-                            }}
-                          />
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               </div>
