@@ -573,7 +573,7 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                       <span className="text-yellow-400">▶</span> 判定结论：该 IP <span className="text-cyan-400 font-bold">{aggregation.sourceIp}</span> 发起 <span className="text-red-400 font-bold">{aggregation.count} 次</span>攻击
                     </p>
                     <p className="animate-[typing_2s_steps(60)_3s_both] opacity-0">
-                      <span className="text-purple-400">▶</span> 攻击路径：<span className="text-slate-300">{aggregation.targetIps.slice(0, 2).join(' → ')}</span>
+                      <span className="text-purple-400">▶</span> 攻击路径：<span className="text-cyan-400 font-bold">{aggregation.sourceIp}</span> <span className="text-slate-400">→</span> <span className="text-slate-300">{aggregation.targetIps.join(' → ')}</span>
                     </p>
                     <p className="animate-[typing_2s_steps(60)_4s_both] opacity-0">
                       <span className="text-orange-400">▶</span> 主要手段：<span className="text-red-400 font-bold">{aggregation.threatTypes.slice(0, 2).join('、')}</span>
@@ -582,7 +582,7 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                       <span className="text-red-400">▶</span> 异常评分：<span className={`font-black ${
                         anomalyScore > 0.8 ? 'text-red-400' : 
                         anomalyScore > 0.5 ? 'text-orange-400' : 'text-yellow-400'
-                      }`}>{(anomalyScore * 100).toFixed(1)}%</span> | 威胁等级：<span className={`font-black ${
+                      }`}>{anomalyScore.toFixed(3)}</span> | 威胁等级：<span className={`font-black ${
                         anomalyScore > 0.8 ? 'text-red-400' : 
                         anomalyScore > 0.5 ? 'text-orange-400' : 'text-yellow-400'
                       }`}>{anomalyScore > 0.8 ? '极高' : anomalyScore > 0.5 ? '高' : '中'}</span>
@@ -711,106 +711,137 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
               );
             })}
 
-            {/* 详情下钻悬浮窗 - 超酷炫设计 */}
+            {/* 子特征详情弹窗 - 居中全屏显示 */}
             {detailModal.visible && (
               <div 
-                className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md"
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-lg"
                 onClick={() => setDetailModal({ visible: false, feature: null, top3: [] })}
               >
                 <div 
-                  className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 border-2 border-cyan-500/50 rounded-xl p-6 w-[420px] shadow-2xl shadow-cyan-500/20 animate-fadeIn"
+                  className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 border-2 border-cyan-500/50 rounded-2xl p-8 w-[85%] max-w-[1200px] h-[85vh] shadow-2xl shadow-cyan-500/20 animate-fadeIn flex flex-col"
                   onClick={(e) => e.stopPropagation()}
                 >
                   {/* 背景光效 */}
                   <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(6,182,212,0.15),transparent_50%)]" />
                   <div className="absolute inset-0 bg-[radial-gradient(circle_at_0%_100%,rgba(168,85,247,0.1),transparent_50%)]" />
                   
-                  {/* 标题 - 紧凑布局 */}
-                  <div className="relative z-10 mb-4 flex items-center justify-between">
-                    <div>
-                      <div className="text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400">
-                        {detailModal.feature?.key === 'structure' ? '图谱拓扑特征' : 
-                         detailModal.feature?.key === 'node' ? '节点实体分布' :
-                         detailModal.feature?.key === 'edge' ? '行为路径关联' :
-                         detailModal.feature?.key === 'sequence' ? '时序行为指纹' :
-                         detailModal.feature?.key === 'semantic' ? '攻击语义向量' : detailModal.feature?.name}
+                  {/* 标题 */}
+                  <div className="relative z-10 mb-6 flex items-center justify-between border-b border-cyan-500/30 pb-4">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 rounded-xl border border-cyan-500/50">
+                        <Activity size={24} className="text-cyan-400" />
                       </div>
-                      <div className="text-[10px] text-slate-400 font-mono mt-1">所有子特征详细分析 ({detailModal.top3.length} 项)</div>
+                      <div>
+                        <div className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400">
+                          {detailModal.feature?.key === 'structure' ? '图谱拓扑特征' : 
+                           detailModal.feature?.key === 'node' ? '节点实体分布' :
+                           detailModal.feature?.key === 'edge' ? '行为路径关联' :
+                           detailModal.feature?.key === 'sequence' ? '时序行为指纹' :
+                           detailModal.feature?.key === 'semantic' ? '攻击语义向量' : detailModal.feature?.name}
+                        </div>
+                        <div className="text-sm text-slate-400 font-mono mt-1">子特征详细分析 · 共 {detailModal.top3.length} 项特征</div>
+                      </div>
                     </div>
                     <button 
                       onClick={() => setDetailModal({ visible: false, feature: null, top3: [] })}
-                      className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-800/50 border border-slate-700 text-slate-400 hover:text-red-400 hover:border-red-500/50 transition-all text-xl"
+                      className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-800/50 border border-slate-700 text-slate-400 hover:text-red-400 hover:border-red-500/50 hover:bg-red-500/10 transition-all text-2xl"
                     >×</button>
                   </div>
                   
-                  {/* 所有子特征列表 - 全新表格UI */}
-                  <div className="relative z-10 max-h-[400px] overflow-y-auto scrollbar-thin">
-                    <table className="w-full">
-                      <thead className="sticky top-0 bg-slate-900/95 backdrop-blur-sm z-10">
-                        <tr className="border-b border-cyan-500/30">
-                          <th className="text-left py-2 px-3 text-[10px] font-bold text-cyan-300">序号</th>
-                          <th className="text-left py-2 px-3 text-[10px] font-bold text-cyan-300">特征名称</th>
-                          <th className="text-right py-2 px-3 text-[10px] font-bold text-cyan-300">特征值</th>
-                          <th className="text-right py-2 px-3 text-[10px] font-bold text-cyan-300">强度</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {detailModal.top3.map((item, idx) => {
-                          // 特征名称中文映射
-                          const featureNameMap: Record<string, string> = {
-                            'node_count': '节点总数', 'edge_count': '边总数', 'node_edge_ratio': '节点边比率',
-                            'avg_degree': '平均度数', 'density': '图密度', 'diameter': '图直径',
-                            'avg_clustering': '平均聚类系数', 'connected_components': '连通分量',
-                            'process_node_count': '进程节点数', 'attacker_node_count': '攻击源节点',
-                            'file_node_count': '文件节点数', 'socket_node_count': '网络套接字',
-                            'server_node_count': '服务器节点', 'other_node_count': '其他节点',
-                            'exec_edge_count': '执行边数', 'read_edge_count': '读取边数',
-                            'write_edge_count': '写入边数', 'connect_edge_count': '连接边数',
-                            'fork_edge_count': '分支边数', 'other_edge_count': '其他边数',
-                            'time_span_seconds': '时间跨度(秒)', 'burst_count': '突发次数',
-                            'night_activity': '夜间活动', 'operation_entropy': '操作熄',
-                            'rce_score': '远程执行评分', 'webshell_score': 'WebShell评分',
-                            'privilege_escalation_score': '提权评分', 'sql_injection_score': 'SQL注入评分',
-                            'sensitive_file_access_count': '敏感文件访问', 'critical_process_count': '关键进程数'
-                          };
-                          const chineseName = featureNameMap[item.name] || item.name;
-                          const scoreVal = parseFloat(item.score);
-                          const intensity = Math.min(scoreVal * 100, 100);
-                          
-                          return (
-                            <tr key={idx} className="border-b border-slate-700/30 hover:bg-slate-800/50 transition-colors">
-                              <td className="py-2 px-3">
-                                <div className="w-6 h-6 rounded bg-gradient-to-br from-cyan-500 to-purple-500 flex items-center justify-center text-white text-[10px] font-black">
-                                  {idx + 1}
-                                </div>
-                              </td>
-                              <td className="py-2 px-3 text-xs text-slate-200">{chineseName}</td>
-                              <td className="py-2 px-3 text-right">
-                                <span className="text-xs font-mono text-cyan-400 font-bold">{item.score}</span>
-                              </td>
-                              <td className="py-2 px-3 text-right">
-                                <div className="flex items-center justify-end gap-2">
-                                  <div className="w-16 h-1.5 bg-slate-900/80 rounded-full overflow-hidden">
-                                    <div 
-                                      className={`h-full rounded-full transition-all duration-500 ${
-                                        scoreVal > 0.7 ? 'bg-gradient-to-r from-red-500 to-orange-500' :
-                                        scoreVal > 0.4 ? 'bg-gradient-to-r from-orange-500 to-yellow-500' :
-                                        'bg-gradient-to-r from-cyan-500 to-blue-500'
-                                      }`}
-                                      style={{ width: `${intensity}%` }}
-                                    />
+                  {/* 所有子特征列表 - 优化表格UI */}
+                  <div className="relative z-10 flex-1 overflow-hidden">
+                    <div className="h-full overflow-y-auto scrollbar-thin pr-2">
+                      <table className="w-full">
+                        <thead className="sticky top-0 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 backdrop-blur-sm z-10 shadow-lg">
+                          <tr className="border-b-2 border-cyan-500/50">
+                            <th className="text-left py-4 px-4 text-xs font-bold text-cyan-300 uppercase tracking-wider">序号</th>
+                            <th className="text-left py-4 px-4 text-xs font-bold text-cyan-300 uppercase tracking-wider">特征名称</th>
+                            <th className="text-center py-4 px-4 text-xs font-bold text-cyan-300 uppercase tracking-wider">特征值</th>
+                            <th className="text-center py-4 px-4 text-xs font-bold text-cyan-300 uppercase tracking-wider">强度分析</th>
+                            <th className="text-center py-4 px-4 text-xs font-bold text-cyan-300 uppercase tracking-wider">状态</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {detailModal.top3.map((item, idx) => {
+                            // 特征名称中文映射
+                            const featureNameMap: Record<string, string> = {
+                              'node_count': '节点总数', 'edge_count': '边总数', 'node_edge_ratio': '节点边比率',
+                              'avg_degree': '平均度数', 'density': '图密度', 'diameter': '图直径',
+                              'avg_clustering': '平均聚类系数', 'connected_components': '连通分量',
+                              'process_node_count': '进程节点数', 'attacker_node_count': '攻击源节点',
+                              'file_node_count': '文件节点数', 'socket_node_count': '网络套接字',
+                              'server_node_count': '服务器节点', 'other_node_count': '其他节点',
+                              'exec_edge_count': '执行边数', 'read_edge_count': '读取边数',
+                              'write_edge_count': '写入边数', 'connect_edge_count': '连接边数',
+                              'fork_edge_count': '分支边数', 'other_edge_count': '其他边数',
+                              'time_span_seconds': '时间跨度(秒)', 'burst_count': '突发次数',
+                              'night_activity': '夜间活动', 'operation_entropy': '操作熄',
+                              'rce_score': '远程执行评分', 'webshell_score': 'WebShell评分',
+                              'privilege_escalation_score': '提权评分', 'sql_injection_score': 'SQL注入评分',
+                              'sensitive_file_access_count': '敏感文件访问', 'critical_process_count': '关键进程数'
+                            };
+                            const chineseName = featureNameMap[item.name] || item.name;
+                            const scoreVal = parseFloat(item.score);
+                            const intensity = Math.min(scoreVal * 100, 100);
+                            
+                            return (
+                              <tr key={idx} className="border-b border-slate-700/20 hover:bg-gradient-to-r hover:from-cyan-500/10 hover:to-purple-500/10 transition-all duration-300 group">
+                                <td className="py-4 px-4">
+                                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-purple-500 flex items-center justify-center text-white text-sm font-black shadow-lg group-hover:scale-110 transition-transform">
+                                    {idx + 1}
                                   </div>
-                                  <span className={`text-[10px] font-bold ${
-                                    scoreVal > 0.7 ? 'text-red-400' :
-                                    scoreVal > 0.4 ? 'text-orange-400' : 'text-cyan-400'
-                                  }`}>{intensity.toFixed(0)}%</span>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                                </td>
+                                <td className="py-4 px-4">
+                                  <div className="text-sm font-bold text-slate-200 group-hover:text-cyan-300 transition-colors">{chineseName}</div>
+                                  <div className="text-xs text-slate-500 font-mono mt-0.5">{item.name}</div>
+                                </td>
+                                <td className="py-4 px-4 text-center">
+                                  <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-900/50 rounded-lg border border-slate-700/50">
+                                    <span className="text-sm font-mono text-cyan-400 font-bold">{item.score}</span>
+                                  </div>
+                                </td>
+                                <td className="py-4 px-4">
+                                  <div className="flex items-center justify-center gap-3">
+                                    <div className="flex-1 max-w-[200px] h-2.5 bg-slate-900/80 rounded-full overflow-hidden border border-slate-700/50">
+                                      <div 
+                                        className={`h-full rounded-full transition-all duration-500 ${
+                                          scoreVal > 0.7 ? 'bg-gradient-to-r from-red-500 via-orange-500 to-red-600' :
+                                          scoreVal > 0.4 ? 'bg-gradient-to-r from-orange-500 via-yellow-500 to-orange-600' :
+                                          'bg-gradient-to-r from-cyan-500 via-blue-500 to-purple-500'
+                                        }`}
+                                        style={{ 
+                                          width: `${intensity}%`,
+                                          boxShadow: scoreVal > 0.7 ? '0 0 10px rgba(239,68,68,0.6)' : 
+                                                     scoreVal > 0.4 ? '0 0 10px rgba(251,146,60,0.6)' : 
+                                                     '0 0 10px rgba(6,182,212,0.6)'
+                                        }}
+                                      />
+                                    </div>
+                                    <span className={`text-xs font-bold min-w-[40px] text-right ${
+                                      scoreVal > 0.7 ? 'text-red-400' :
+                                      scoreVal > 0.4 ? 'text-orange-400' : 'text-cyan-400'
+                                    }`}>{intensity.toFixed(1)}%</span>
+                                  </div>
+                                </td>
+                                <td className="py-4 px-4 text-center">
+                                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
+                                    scoreVal > 0.7 ? 'bg-red-500/20 text-red-300 border border-red-500/50' :
+                                    scoreVal > 0.4 ? 'bg-orange-500/20 text-orange-300 border border-orange-500/50' :
+                                    'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50'
+                                  }`}>
+                                    <div className={`w-2 h-2 rounded-full ${
+                                      scoreVal > 0.7 ? 'bg-red-400 animate-pulse' :
+                                      scoreVal > 0.4 ? 'bg-orange-400' : 'bg-cyan-400'
+                                    }`} />
+                                    {scoreVal > 0.7 ? '高危' : scoreVal > 0.4 ? '警告' : '正常'}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               </div>
