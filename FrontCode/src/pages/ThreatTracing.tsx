@@ -351,14 +351,17 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
             const baseline = groupDetail.baseline;
             const deviation = ((current / baseline - 1) * 100).toFixed(0);
             
+            // 获取该组的所有维度特征数据
+            const allFeatures = groupDetail.dimensions || [];
+            
             groupsData[g.key] = {
               current,
               baseline,
               label: current > baseline ? `+${deviation}%` : `${deviation}%`,
-              top3: groupDetail.topFeatures?.slice(0, 3).map((name: string) => ({
-                name,
-                score: (Math.random() * 0.5).toFixed(3) // 临时使用随机值，后续从dimensions获取
-              })) || []
+              top3: allFeatures.map((dim: any) => ({
+                name: dim.name,
+                score: dim.value.toFixed(3)
+              }))
             };
           }
         });
@@ -467,8 +470,15 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                 </div>
               </div>
               
-              {/* 130维特征矩阵 - 带色卡图例 */}
+              {/* 130维特征矩阵 - 带色卡图例和扫描动画 */}
               <div className="relative z-10 space-y-3">
+                {/* 扫描进度提示 */}
+                {scanPhase >= 0 && scanPhase <= 4 && (
+                  <div className="flex items-center gap-2 mb-2 p-2 bg-cyan-500/10 rounded-lg border border-cyan-500/30">
+                    <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse" />
+                    <span className="text-xs text-cyan-300 font-mono">正在扫描第 {scanPhase + 1} 组特征...</span>
+                  </div>
+                )}
                 {/* 色卡图例 */}
                 <div className="flex items-center gap-3 mb-2 p-3 bg-slate-900/50 rounded-lg border border-slate-700/30">
                   <span className="text-xs text-slate-400 font-bold">特征强度图例：</span>
@@ -573,10 +583,10 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                       <span className="text-yellow-400">▶</span> 判定结论：该 IP <span className="text-cyan-400 font-bold">{aggregation.sourceIp}</span> 发起 <span className="text-red-400 font-bold">{aggregation.count} 次</span>攻击
                     </p>
                     <p className="animate-[typing_2s_steps(60)_3s_both] opacity-0">
-                      <span className="text-purple-400">▶</span> 攻击路径：<span className="text-cyan-400 font-bold">{aggregation.sourceIp}</span> <span className="text-slate-400">→</span> <span className="text-slate-300">{aggregation.targetIps.join(' → ')}</span>
+                      <span className="text-purple-400">▶</span> 攻击路径：<span className="text-cyan-400 font-bold">{aggregation.sourceIp}</span> <span className="text-slate-400">→</span> <span className="text-orange-300">通过{aggregation.threatTypes[0] || 'RCE漏洞'}执行</span> <span className="text-slate-400">→</span> <span className="text-slate-300">{aggregation.targetIps.join(' → ')}</span>
                     </p>
                     <p className="animate-[typing_2s_steps(60)_4s_both] opacity-0">
-                      <span className="text-orange-400">▶</span> 主要手段：<span className="text-red-400 font-bold">{aggregation.threatTypes.slice(0, 2).join('、')}</span>
+                      <span className="text-orange-400">▶</span> 攻击手段：<span className="text-red-400 font-bold">{aggregation.threatTypes.map((t, i) => i === 0 ? `${t}漏洞利用` : t).slice(0, 2).join('、')}</span>
                     </p>
                     <p className="animate-[typing_2s_steps(60)_5s_both] opacity-0">
                       <span className="text-red-400">▶</span> 异常评分：<span className={`font-black ${
