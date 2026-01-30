@@ -367,15 +367,15 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
         });
         setFeatureGroups(groupsData);
         
-        // 计算加权评分
+        // 计算加权评分 - 使用真实的加权算法
         let weightedScore = 0;
         FEATURE_GROUPS.forEach(g => {
           const groupData = groupsData[g.key];
           if (groupData) {
-            weightedScore += (groupData.current / groupData.baseline) * g.weight * 100;
+            weightedScore += groupData.current * g.weight;
           }
         });
-        setAnomalyScore(Math.min(weightedScore, 100));
+        setAnomalyScore(Math.min(weightedScore, 1));
         
       } catch (error) {
         console.error('特征提取失败:', error);
@@ -580,15 +580,12 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                       <span className="text-cyan-400">▶</span> AI 引擎已完成 <span className="text-cyan-400 font-bold">{rawVector.length} 维</span>特征提取
                     </p>
                     <p className="animate-[typing_2s_steps(60)_2s_both] opacity-0">
-                      <span className="text-yellow-400">▶</span> 判定结论：该 IP <span className="text-cyan-400 font-bold">{aggregation.sourceIp}</span> 发起 <span className="text-red-400 font-bold">{aggregation.count} 次</span>攻击
+                      <span className="text-yellow-400">▶</span> 攻击源：<span className="text-cyan-400 font-bold">{aggregation.sourceIp}</span> → 目标：<span className="text-slate-300">{aggregation.targetIps[0]}</span>
                     </p>
                     <p className="animate-[typing_2s_steps(60)_3s_both] opacity-0">
-                      <span className="text-purple-400">▶</span> 攻击路径：<span className="text-cyan-400 font-bold">{aggregation.sourceIp}</span> <span className="text-slate-400">→</span> <span className="text-orange-300">通过{aggregation.threatTypes[0] || 'RCE漏洞'}执行</span> <span className="text-slate-400">→</span> <span className="text-slate-300">{aggregation.targetIps.join(' → ')}</span>
+                      <span className="text-purple-400">▶</span> 攻击手段：<span className="text-orange-300">通过{aggregation.threatTypes[0] || 'RCE漏洞'}执行提权</span>
                     </p>
                     <p className="animate-[typing_2s_steps(60)_4s_both] opacity-0">
-                      <span className="text-orange-400">▶</span> 攻击手段：<span className="text-red-400 font-bold">{aggregation.threatTypes.map((t, i) => i === 0 ? `${t}漏洞利用` : t).slice(0, 2).join('、')}</span>
-                    </p>
-                    <p className="animate-[typing_2s_steps(60)_5s_both] opacity-0">
                       <span className="text-red-400">▶</span> 异常评分：<span className={`font-black ${
                         anomalyScore > 0.8 ? 'text-red-400' : 
                         anomalyScore > 0.5 ? 'text-orange-400' : 'text-yellow-400'
@@ -721,14 +718,14 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
               );
             })}
 
-            {/* 子特征详情弹窗 - 居中全屏显示 */}
+            {/* 子特征详情弹窗 - 中间区域全屏显示 */}
             {detailModal.visible && (
               <div 
-                className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-lg"
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl"
                 onClick={() => setDetailModal({ visible: false, feature: null, top3: [] })}
               >
                 <div 
-                  className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 border-2 border-cyan-500/50 rounded-2xl p-8 w-[85%] max-w-[1200px] h-[85vh] shadow-2xl shadow-cyan-500/20 animate-fadeIn flex flex-col"
+                  className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 border-2 border-cyan-500/50 rounded-2xl p-10 w-[95%] max-w-[1600px] h-[90vh] shadow-2xl shadow-cyan-500/20 animate-fadeIn flex flex-col"
                   onClick={(e) => e.stopPropagation()}
                 >
                   {/* 背景光效 */}
