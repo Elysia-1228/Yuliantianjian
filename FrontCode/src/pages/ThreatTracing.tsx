@@ -218,6 +218,7 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
   const [anomalyScore, setAnomalyScore] = useState(0);
   const [rawVector, setRawVector] = useState<number[]>([]);
   const [featureGroups, setFeatureGroups] = useState<any>({});
+  const [detectResult, setDetectResult] = useState<{prediction: string; l1Score: number|null; l2Score: number|null; detectionLayer: string; confidence: number} | null>(null);
   const [scanPhase, setScanPhase] = useState(-1);
   const [visibleCards, setVisibleCards] = useState<string[]>([]);
   const [hoveredFeature, setHoveredFeature] = useState<string | null>(null);
@@ -397,12 +398,41 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
           }
         });
         setAnomalyScore(totalWeight > 0 ? Math.min(weightedScore / totalWeight, 1) : 0);
-        
+
+        // 调用L1/L2双层检测模型
+        try {
+          const detectRes = await fetch('http://localhost:7890/api/pids/detect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              featureVector: data.rawVector,
+              threatId: `threat_${aggregation.sourceIp}`,
+              useL2: true
+            })
+          });
+          if (detectRes.ok) {
+            const detectData = await detectRes.json();
+            setDetectResult({
+              prediction: detectData.prediction,
+              l1Score: detectData.l1Score,
+              l2Score: detectData.l2Score,
+              detectionLayer: detectData.detectionLayer,
+              confidence: detectData.confidence
+            });
+            // 用模型得分替代启发式异常评分
+            if (detectData.anomalyScore !== undefined) {
+              setAnomalyScore(detectData.anomalyScore);
+            }
+          }
+        } catch (detectErr) {
+          console.warn('双层检测未开启，使用启发式评分:', detectErr);
+        }
+
       } catch (error) {
         console.error('特征提取失败:', error);
-        // 如果API调用失败，使用空数据
         setRawVector(Array.from({ length: 130 }, () => 0));
         setAnomalyScore(0);
+        setDetectResult(null);
       }
     };
     
@@ -621,6 +651,15 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                         anomalyScore > 0.5 ? 'text-orange-400' : 'text-yellow-400'
                       }`}>{anomalyScore > 0.8 ? '极高' : anomalyScore > 0.5 ? '高' : '中'}</span>
                     </p>
+                    {detectResult && (
+                      <p className="animate-[typing_2s_steps(60)_5s_both] opacity-0">
+                        <span className="text-green-400">▶</span> 模型检测：<span className={`font-black ${detectResult.prediction === 'anomaly' ? 'text-red-400' : 'text-green-400'}`}>
+                          {detectResult.prediction === 'anomaly' ? '异常入侵' : '正常行为'}</span>
+                        {' '}| 检测层：<span className="text-cyan-400 font-bold">{detectResult.detectionLayer}</span>
+                        {detectResult.l1Score !== null && <span className="text-slate-400"> | L1={detectResult.l1Score.toFixed(3)}</span>}
+                        {detectResult.l2Score !== null && <span className="text-slate-400"> | L2={detectResult.l2Score.toFixed(3)}</span>}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
