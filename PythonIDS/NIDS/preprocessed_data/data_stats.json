@@ -1,0 +1,57 @@
+{
+  "dataset": "CICIDS2017",
+  "num_classes": 8,
+  "class_names": [
+    "Benign",
+    "BruteForce",
+    "DoS",
+    "WebAttack",
+    "Infiltration",
+    "Bot",
+    "PortScan",
+    "DDoS"
+  ],
+  "feature_dim": 78,
+  "pca_dim": 25,
+  "seq_len": 32,
+  "stride": 16,
+  "pca_variance_explained": 0.9555070996284485,
+  "train_sequences": 110288,
+  "val_sequences": 23637,
+  "test_sequences": 23637,
+  "train_class_dist": {
+    "6": 3968,
+    "2": 8477,
+    "0": 91753,
+    "7": 5601,
+    "1": 401,
+    "5": 86,
+    "4": 2
+  },
+  "val_class_dist": {
+    "0": 19662,
+    "7": 1201,
+    "2": 1817,
+    "6": 851,
+    "1": 86,
+    "5": 19,
+    "4": 1
+  },
+  "test_class_dist": {
+    "0": 19662,
+    "7": 1201,
+    "2": 1817,
+    "6": 851,
+    "1": 86,
+    "5": 19,
+    "4": 1
+  },
+  "scaler_mean_sample": [
+    8695.203711070988,
+    16604207.81710094,
+    10.191178187398771,
+    11.43863052390457,
+    607.774885835433
+  ],
+  "processing_time_seconds": 83.95104885101318
+}

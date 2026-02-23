@@ -288,37 +288,60 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
         const edges = [];
         const nodeSet = new Set();
         
+        // 为每个告警创建独立的攻击链节点，使不同攻击源产生差异化的图结构
         aggregation.alerts.forEach((alert, idx) => {
           const attackerId = `attacker_${alert.sourceIp || 'unknown'}`;
-          const targetId = `target_${alert.destIp || alert.sourceIp || 'unknown'}`;
+          const targetId = `target_${alert.destIp || alert.targetIp || alert.sourceIp || 'unknown'}`;
+          const attackType = alert.threatType || alert.attackType || 'unknown';
+          const processId = `process_${attackType}_${idx}`;
+          const fileId = `file_${attackType}_${idx}`;
           
+          // 攻击源节点
           if (!nodeSet.has(attackerId)) {
             nodes.push({ 
               id: attackerId, 
               label: alert.sourceIp || 'unknown', 
               type: 'attacker',
               category: 0,
-              timestamp: alert.occurTime || new Date().toISOString()
+              timestamp: alert.occurTime || alert.detectedTime || new Date().toISOString()
             });
             nodeSet.add(attackerId);
           }
+          // 目标节点
           if (!nodeSet.has(targetId)) {
             nodes.push({ 
               id: targetId, 
-              label: alert.destIp || alert.sourceIp || 'unknown', 
-              type: 'process',
+              label: alert.destIp || alert.targetIp || alert.sourceIp || 'unknown', 
+              type: 'host',
               category: 1,
-              timestamp: alert.occurTime || new Date().toISOString(),
-              cmdline: alert.attackType || ''
+              timestamp: alert.occurTime || alert.detectedTime || new Date().toISOString()
             });
             nodeSet.add(targetId);
           }
-          
-          edges.push({
-            source: attackerId,
-            target: targetId,
-            label: alert.attackType || '连接'
+          // 攻击进程节点（每个告警一个，增加图的复杂度）
+          nodes.push({ 
+            id: processId, 
+            label: attackType, 
+            type: 'process',
+            category: 2,
+            timestamp: alert.occurTime || alert.detectedTime || new Date().toISOString(),
+            cmdline: `${attackType} attack from ${alert.sourceIp}`
           });
+          nodeSet.add(processId);
+          // 受影响文件/服务节点
+          nodes.push({
+            id: fileId,
+            label: `svc_${idx}`,
+            type: 'file',
+            category: 3,
+            timestamp: alert.occurTime || alert.detectedTime || new Date().toISOString()
+          });
+          nodeSet.add(fileId);
+          
+          // 边：攻击源 → 进程 → 目标 → 文件
+          edges.push({ source: attackerId, target: processId, label: attackType });
+          edges.push({ source: processId, target: targetId, label: '攻击' });
+          edges.push({ source: targetId, target: fileId, label: '影响' });
         });
         
         const graphData = { nodes, edges };
@@ -2407,11 +2430,11 @@ const ThreatTracing: React.FC = () => {
    * 选择聚合项时的处理 - 启动分析流程
    */
   const handleSelectAggregation = useCallback((aggregation: AggregatedAlert) => {
-    // 如果正在分析中，提示用户等待
-    if (analysisPhase !== 'idle' && analysisPhase !== 'complete') {
-      console.log('[PIDS] 分析正在进行中，无法切换攻击源');
-      return;
-    }
+    // 重置分析状态，允许切换攻击源
+    setAnalysisPhase('idle');
+    setAnalysisComplete(false);
+    setGraphData(null);
+    setGraphError(null);
     
     // 设置选中的聚合项
     setSelectedAggregation(aggregation);
@@ -2422,13 +2445,13 @@ const ThreatTracing: React.FC = () => {
     setPidsStarted(true);
     
     // 调用AI引擎生成图谱
-    addLog('info', `选择攻击源: ${aggregation.sourceIp}`);
+    addLog('info', `切换攻击源: ${aggregation.sourceIp}`);
     addLog('info', `聚合攻击次数: ${aggregation.count}`);
     addLog('info', `主要威胁类型: ${aggregation.primaryThreatType}`);
     
     // 使用setTimeout包装handleGenerateGraph调用，避免闭包陷阱和依赖问题
     setTimeout(() => handleGenerateGraph(firstAlert, aggregation), 0);
-  }, [addLog, analysisPhase]);
+  }, [addLog]);
 
 
   // 获取真实NIDS告警数据
