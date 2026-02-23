@@ -590,7 +590,11 @@ async def detect_v2(request: DetectV2Request):
         l2_pred = l2_detector.predict(features)[0]
         detection_layer = "L2"
         
-        final_score = l2_score
+        # 融合L1和L2分数，避免极端值
+        if l1_score is not None:
+            final_score = 0.3 * l1_score + 0.7 * l2_score
+        else:
+            final_score = l2_score
         final_pred = "anomaly" if l2_pred == 1 else "normal"
     elif l1_score is not None:
         final_score = l1_score

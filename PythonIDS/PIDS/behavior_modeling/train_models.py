@@ -447,9 +447,10 @@ class VAEClassifier:
         with torch.no_grad():
             recon, mu, logvar, cls_logits = self.model(X_t)
 
-            # 用 logit 差值 + sigmoid（比 softmax 有更多梯度信息）
+            # 用 logit 差值 + 温度缩放 sigmoid（避免输出极端的0或1）
             logit_diff = (cls_logits[:, 1] - cls_logits[:, 0]).cpu().numpy()
-            scores = 1.0 / (1.0 + np.exp(-logit_diff))
+            temperature = 3.0  # 温度越高，输出越平滑
+            scores = 1.0 / (1.0 + np.exp(-logit_diff / temperature))
 
         return np.clip(scores, 0, 1)
 
