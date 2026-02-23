@@ -33,7 +33,7 @@ from pydantic import BaseModel
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from PIDS.feature_extraction import FeatureExtractor
-from PIDS.behavior_modeling import BehaviorModeler, ModelConfig, DetectionResult
+from PIDS.behavior_modeling import BehaviorModeler, ModelConfig, DetectionResult, EnsembleDetector, VAEClassifier
 from PIDS.evaluation import PerformanceEvaluator
 
 # ============ 配置 ============
@@ -130,6 +130,35 @@ modeler = BehaviorModeler()
 
 # 性能评估器实例
 evaluator = PerformanceEvaluator()
+
+# ===== L1/L2 双层检测模型 =====
+l1_detector: Optional[EnsembleDetector] = None
+l2_detector: Optional[VAEClassifier] = None
+
+def _load_trained_models():
+    """启动时加载训练好的L1/L2模型"""
+    global l1_detector, l2_detector
+    model_dir = os.path.join(os.path.dirname(__file__), 'behavior_modeling', 'models')
+    
+    # L1 集成检测器
+    l1_path = os.path.join(model_dir, 'ensemble_v1.0.pkl')
+    if os.path.exists(l1_path):
+        l1_detector = EnsembleDetector()
+        l1_detector.load(l1_path)
+        logger.info(f"✅ L1 集成检测器已加载: {l1_path}")
+    else:
+        logger.warning(f"⚠️ L1 模型不存在: {l1_path}")
+    
+    # L2 VAE+MLP
+    l2_path = os.path.join(model_dir, 'vae_classifier_v1.0.pt')
+    if os.path.exists(l2_path):
+        l2_detector = VAEClassifier(input_dim=130, device='cpu')
+        l2_detector.load(l2_path)
+        logger.info(f"✅ L2 VAE+MLP已加载: {l2_path}")
+    else:
+        logger.warning(f"⚠️ L2 模型不存在: {l2_path}")
+
+_load_trained_models()
 
 # 特征缓存（简易存储，后续可替换为数据库）
 feature_cache: Dict[str, Dict] = {}
@@ -477,7 +506,120 @@ async def get_feature_names():
         }
     }
 
-# ============ 行为建模 API ============
+# ============ 双层检测 API (L1+L2) ============
+
+class DetectV2Request(BaseModel):
+    """双层检测请求"""
+    graphData: Optional[GraphData] = None
+    featureVector: Optional[List[float]] = None
+    threatId: Optional[str] = None
+    useL2: bool = True
+
+class DetectV2Response(BaseModel):
+    """双层检测响应"""
+    success: bool
+    threatId: str
+    prediction: str
+    anomalyScore: float
+    l1Score: Optional[float] = None
+    l2Score: Optional[float] = None
+    confidence: float
+    detectionLayer: str
+    detectionTimeMs: int
+    message: Optional[str] = None
+
+@app.post("/api/pids/detect", response_model=DetectV2Response)
+async def detect_v2(request: DetectV2Request):
+    """
+    双层检测端点 (L1快速筛选 + L2深度确认)
+    
+    接收溯源图数据或特征向量，返回检测结果
+    """
+    import time as _time
+    t0 = _time.time()
+    
+    threat_id = request.threatId or f"threat_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    
+    # Step 1: 获取特征向量
+    if request.featureVector:
+        features = np.array(request.featureVector).reshape(1, -1)
+    elif request.graphData:
+        graph_data = {
+            "nodes": [node.dict() for node in request.graphData.nodes],
+            "edges": [edge.dict() for edge in request.graphData.edges]
+        }
+        feat_vec = extractor.extract(graph_data)
+        features = feat_vec.reshape(1, -1)
+    else:
+        raise HTTPException(status_code=400, detail="需要提供 graphData 或 featureVector")
+    
+    l1_score = None
+    l2_score = None
+    detection_layer = "none"
+    
+    # Step 2: L1 快速筛选
+    if l1_detector and l1_detector.is_fitted:
+        l1_scores = l1_detector.predict_scores(features)
+        l1_score = float(l1_scores[0])
+        l1_pred = l1_detector.predict(features)[0]
+        detection_layer = "L1"
+        
+        # L1 判定为正常 → 直接放行
+        if l1_pred == 0 and not request.useL2:
+            elapsed = int((_time.time() - t0) * 1000)
+            return DetectV2Response(
+                success=True, threatId=threat_id,
+                prediction="normal", anomalyScore=l1_score,
+                l1Score=l1_score, confidence=1 - l1_score,
+                detectionLayer="L1", detectionTimeMs=elapsed,
+                message="L1判定正常"
+            )
+    
+    # Step 3: L2 深度确认
+    if request.useL2 and l2_detector and l2_detector.is_fitted:
+        l2_scores = l2_detector.predict_scores(features)
+        l2_score = float(l2_scores[0])
+        l2_pred = l2_detector.predict(features)[0]
+        detection_layer = "L2"
+        
+        final_score = l2_score
+        final_pred = "anomaly" if l2_pred == 1 else "normal"
+    elif l1_score is not None:
+        final_score = l1_score
+        final_pred = "anomaly" if l1_score >= (l1_detector.threshold if l1_detector else 0.5) else "normal"
+    else:
+        final_score = 0.0
+        final_pred = "unknown"
+        detection_layer = "none"
+    
+    elapsed = int((_time.time() - t0) * 1000)
+    confidence = abs(final_score - 0.5) * 2
+    
+    logger.info(f"🔍 检测完成 | {threat_id} | {final_pred} | "
+                f"L1={l1_score:.3f if l1_score else 'N/A'} | "
+                f"L2={l2_score:.3f if l2_score else 'N/A'} | {elapsed}ms")
+    
+    return DetectV2Response(
+        success=True, threatId=threat_id,
+        prediction=final_pred, anomalyScore=final_score,
+        l1Score=l1_score, l2Score=l2_score,
+        confidence=confidence, detectionLayer=detection_layer,
+        detectionTimeMs=elapsed,
+        message=f"{detection_layer}检测完成"
+    )
+
+@app.get("/api/pids/detect/status")
+async def detect_status():
+    """获取检测模型状态"""
+    return {
+        "success": True,
+        "l1": {"loaded": l1_detector is not None and l1_detector.is_fitted,
+               "type": "EnsembleDetector (IF+LOF+OCSVM+XGBoost)"},
+        "l2": {"loaded": l2_detector is not None and l2_detector.is_fitted,
+               "type": "VAEClassifier (VAE+MLP)"},
+    }
+
+# ============ 行为建模 API (旧版兼容) ============
 
 class TrainRequest(BaseModel):
     """训练请求"""

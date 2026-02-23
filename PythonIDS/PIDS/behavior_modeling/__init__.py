@@ -9,5 +9,7 @@
 """
 
 from .behavior_modeling import BehaviorModeler, ModelConfig, DetectionResult
+from .train_models import EnsembleDetector, VAEClassifier
 
-__all__ = ['BehaviorModeler', 'ModelConfig', 'DetectionResult']
+__all__ = ['BehaviorModeler', 'ModelConfig', 'DetectionResult',
+           'EnsembleDetector', 'VAEClassifier']
