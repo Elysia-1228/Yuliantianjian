@@ -360,6 +360,7 @@ class FeatureExtractor:
     def _extract_edge_features(self, nodes: List, edges: List) -> List[float]:
         """提取边特征 (25维)"""
         e = len(edges) if edges else 1
+        n = len(nodes) if nodes else 1
         
         # 边类型统计
         edge_labels = [edge.get('label', 'other').lower() for edge in edges]
@@ -368,13 +369,70 @@ class FeatureExtractor:
         # 节点类型映射
         node_types = {node.get('id', ''): node.get('type', 'other') for node in nodes}
         
-        # 跨类型边统计
+        # 类型间边统计（真实计算）
         cross_type_count = 0
+        type_pair_counts = Counter()
+        self_loop_count = 0
+        edge_set = set()
+        bidirectional_count = 0
+        
         for edge in edges:
-            src_type = node_types.get(edge.get('source', ''), 'other')
-            tgt_type = node_types.get(edge.get('target', ''), 'other')
+            src = edge.get('source', '')
+            tgt = edge.get('target', '')
+            src_type = node_types.get(src, 'other')
+            tgt_type = node_types.get(tgt, 'other')
+            
             if src_type != tgt_type:
                 cross_type_count += 1
+            
+            type_pair_counts[(src_type, tgt_type)] += 1
+            
+            if src == tgt:
+                self_loop_count += 1
+            
+            if (tgt, src) in edge_set:
+                bidirectional_count += 1
+            edge_set.add((src, tgt))
+        
+        process_to_process = float(type_pair_counts.get(('process', 'process'), 0))
+        process_to_file = float(type_pair_counts.get(('process', 'file'), 0))
+        file_to_process = float(type_pair_counts.get(('file', 'process'), 0))
+        process_to_socket = float(type_pair_counts.get(('process', 'socket'), 0))
+        socket_to_process = float(type_pair_counts.get(('socket', 'process'), 0))
+        attacker_to_process = float(type_pair_counts.get(('attacker', 'process'), 0))
+        attacker_to_file = float(type_pair_counts.get(('attacker', 'file'), 0))
+        
+        # 链长和分支因子（基于出度统计）
+        out_degree_counts = Counter(edge.get('source', '') for edge in edges)
+        out_degrees = list(out_degree_counts.values()) if out_degree_counts else [0]
+        branch_factor_avg = float(np.mean(out_degrees))
+        branch_factor_max = float(max(out_degrees))
+        
+        # 边权重统计
+        weights = [edge.get('weight', 1.0) for edge in edges]
+        edge_weight_sum = float(sum(weights)) if weights else 0.0
+        edge_weight_avg = float(np.mean(weights)) if weights else 0.0
+        edge_weight_max = float(max(weights)) if weights else 0.0
+        
+        # 使用 NetworkX 计算关键路径和攻击链深度
+        G = self._build_networkx_graph(nodes, edges)
+        try:
+            critical_path_length = float(nx.dag_longest_path_length(G)) if nx.is_directed_acyclic_graph(G) else float(n)
+        except Exception:
+            critical_path_length = float(n)
+        
+        # 攻击链深度：从 attacker 类型节点出发的最长路径
+        attack_chain_depth = 0.0
+        attacker_nodes = [nid for nid, data in G.nodes(data=True) if data.get('type') == 'attacker']
+        for att in attacker_nodes:
+            try:
+                lengths = nx.single_source_shortest_path_length(G, att)
+                if lengths:
+                    attack_chain_depth = max(attack_chain_depth, float(max(lengths.values())))
+            except Exception:
+                pass
+        if attack_chain_depth == 0.0:
+            attack_chain_depth = float(n) / 2
         
         return [
             float(sum(1 for l in edge_labels if '执行' in l or 'exec' in l)),
@@ -383,20 +441,25 @@ class FeatureExtractor:
             float(sum(1 for l in edge_labels if '连接' in l or 'connect' in l)),
             float(sum(1 for l in edge_labels if 'fork' in l)),
             float(label_counts.get('other', 0)),
-            0.0, 0.0, 0.0, 0.0, 0.0,  # 类型间边统计占位
-            0.0, 0.0,
+            process_to_process,
+            process_to_file,
+            file_to_process,
+            process_to_socket,
+            socket_to_process,
+            attacker_to_process,
+            attacker_to_file,
             cross_type_count / e if e > 0 else 0,
-            0.0,  # self_loop_count
-            0.0,  # bidirectional_edge_count
-            float(len(edges)) / len(nodes) if nodes else 0,  # chain_length_avg
-            float(len(edges)),  # chain_length_max
-            1.0,  # branch_factor_avg
-            max(Counter(edge.get('source', '') for edge in edges).values()) if edges else 0,
-            float(len(edges)),  # edge_weight_sum
-            1.0,  # edge_weight_avg
-            1.0,  # edge_weight_max
-            float(len(nodes)),  # critical_path_length
-            float(len(nodes)) / 2  # attack_chain_depth
+            float(self_loop_count),
+            float(bidirectional_count),
+            float(e) / n if n > 0 else 0,  # chain_length_avg
+            critical_path_length,  # chain_length_max
+            branch_factor_avg,
+            branch_factor_max,
+            edge_weight_sum,
+            edge_weight_avg,
+            edge_weight_max,
+            critical_path_length,
+            attack_chain_depth
         ]
     
     def _calculate_entropy(self, values: List) -> float:
@@ -603,9 +666,35 @@ class FeatureExtractor:
             weekend_activity /= total
         
         # ===== 攻击阶段时间 =====
-        # 估算从第一个事件到关键事件的时间
-        first_to_critical = time_span * 0.3 if time_span > 0 else 0.0  # 假设30%时刻到达关键阶段
-        critical_to_last = time_span * 0.7 if time_span > 0 else 0.0
+        # 基于关键事件（攻击者节点、敏感操作）的时间戳定位关键时刻
+        critical_keywords = ['exec', '执行', 'shell', 'sudo', 'chmod', 'passwd', 'attack', '攻击',
+                             'inject', 'exploit', 'webshell', 'reverse']
+        critical_timestamp = None
+        for node in nodes:
+            label = (node.get('label', '') or '').lower()
+            cmdline = (node.get('cmdline', '') or '').lower()
+            node_type = (node.get('type', '') or '').lower()
+            text = f"{label} {cmdline}"
+            is_critical = node_type == 'attacker' or any(kw in text for kw in critical_keywords)
+            if is_critical:
+                ts = node.get('timestamp') or node.get('time')
+                if ts:
+                    try:
+                        if isinstance(ts, str):
+                            dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+                            critical_timestamp = dt.timestamp()
+                        elif isinstance(ts, (int, float)):
+                            critical_timestamp = float(ts)
+                        break
+                    except Exception:
+                        pass
+        
+        if critical_timestamp is not None and time_span > 0:
+            first_to_critical = max(0.0, critical_timestamp - timestamps[0])
+            critical_to_last = max(0.0, timestamps[-1] - critical_timestamp)
+        else:
+            first_to_critical = time_span * 0.3 if time_span > 0 else 0.0
+            critical_to_last = time_span * 0.7 if time_span > 0 else 0.0
         attack_phase_duration = time_span
         
         return [

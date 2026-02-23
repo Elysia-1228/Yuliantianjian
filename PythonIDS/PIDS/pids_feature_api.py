@@ -21,6 +21,7 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
+import numpy as np
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -170,7 +171,7 @@ async def health_check():
 FEATURE_DIMENSION_CONFIG = {
     "graphStructure": {
         "name": "图结构特征",
-        "baseline": 0.15,
+        "baseline": 1.0,
         "dims": [
             {"idx": 0, "name": "node_count", "label": "节点数量", "unit": "个"},
             {"idx": 1, "name": "edge_count", "label": "边数量", "unit": "条"},
@@ -191,7 +192,7 @@ FEATURE_DIMENSION_CONFIG = {
     },
     "node": {
         "name": "节点特征",
-        "baseline": 0.12,
+        "baseline": 1.0,
         "dims": [
             {"idx": 15, "name": "process_node_count", "label": "进程节点数", "unit": "个"},
             {"idx": 16, "name": "file_node_count", "label": "文件节点数", "unit": "个"},
@@ -202,7 +203,7 @@ FEATURE_DIMENSION_CONFIG = {
     },
     "edge": {
         "name": "边特征",
-        "baseline": 0.18,
+        "baseline": 1.0,
         "dims": [
             {"idx": 55, "name": "exec_edge_count", "label": "执行边数", "unit": "条"},
             {"idx": 56, "name": "read_edge_count", "label": "读取边数", "unit": "条"},
@@ -214,7 +215,7 @@ FEATURE_DIMENSION_CONFIG = {
     },
     "sequence": {
         "name": "序列特征",
-        "baseline": 0.14,
+        "baseline": 1.0,
         "dims": [
             {"idx": 80, "name": "time_span_seconds", "label": "时间跨度(秒)", "unit": "s"},
             {"idx": 83, "name": "interval_mean", "label": "平均间隔", "unit": "s"},
@@ -226,7 +227,7 @@ FEATURE_DIMENSION_CONFIG = {
     },
     "semantic": {
         "name": "语义特征",
-        "baseline": 0.10,
+        "baseline": 1.0,
         "dims": [
             {"idx": 110, "name": "sql_injection_score", "label": "SQL注入得分", "unit": ""},
             {"idx": 111, "name": "xss_score", "label": "XSS得分", "unit": ""},
@@ -264,10 +265,14 @@ def build_feature_dimensions(features: list, feature_names: list) -> list:
         })
     return dimensions
 
-def build_groups_detail(grouped: dict, features: list) -> dict:
-    """构建增强版分组详情，包含基线对比"""
-    import numpy as np
+def build_groups_detail(grouped: dict, features: list, feature_names: list = None) -> dict:
+    """构建增强版分组详情 — 基于真实数据计算异常强度
     
+    current: 该组所有维度中非零值的比例（0~1），反映该组特征的活跃程度
+    baseline: 固定为 0，代表"无异常"
+    
+    前端直接用 current 值渲染百分比（如 current=0.35 → 显示 35%）
+    """
     groups_detail = {}
     group_mapping = {
         "graph_structure": "graphStructure",
@@ -277,37 +282,61 @@ def build_groups_detail(grouped: dict, features: list) -> dict:
         "semantic": "semantic"
     }
     
+    # 组在130维向量中的起始偏移
+    group_offsets = {
+        "graph_structure": 0,
+        "node": 15,
+        "edge": 55,
+        "sequence": 80,
+        "semantic": 110
+    }
+    
     for internal_key, external_key in group_mapping.items():
         values = grouped.get(internal_key, [])
         if hasattr(values, 'tolist'):
             values = values.tolist()
         
         config = FEATURE_DIMENSION_CONFIG.get(external_key, {})
-        baseline = config.get("baseline", 0.15)
-        
-        # 计算当前均值
-        current = float(np.mean(values)) if values else 0.0
-        
-        # 找出显著特征（值最高的3个）
         dims_config = config.get("dims", [])
+        offset = group_offsets.get(internal_key, 0)
+        
+        # 收集代表性维度的真实值
+        key_values = []
+        for d in dims_config:
+            global_idx = d["idx"]
+            local_idx = global_idx - offset
+            if 0 <= local_idx < len(values):
+                key_values.append(float(values[local_idx]))
+            else:
+                key_values.append(0.0)
+        
+        # current = 代表性维度的均值（真实计算值）
+        current = float(np.mean(key_values)) if key_values else 0.0
+        
+        # baseline = 该组所有维度均值（作为整体参考水平）
+        all_mean = float(np.mean(values)) if values else 0.0
+        baseline = all_mean
+        
+        # 找出值最大的3个代表性维度
         top_features = []
-        if dims_config and values:
-            sorted_dims = sorted(
-                [(d["name"], values[i] if i < len(values) else 0) for i, d in enumerate(dims_config)],
-                key=lambda x: x[1],
-                reverse=True
-            )[:3]
+        if dims_config and key_values:
+            dim_vals = [(d["name"], abs(key_values[i])) for i, d in enumerate(dims_config)]
+            sorted_dims = sorted(dim_vals, key=lambda x: x[1], reverse=True)[:3]
             top_features = [d[0] for d in sorted_dims]
         
-        # 构建维度详情
+        # 构建维度详情（全部维度，使用真实特征名称）
         dimensions = []
         for i, v in enumerate(values):
-            dim_info = dims_config[i] if i < len(dims_config) else {"name": f"dim_{i}", "label": f"维度{i}"}
+            global_idx = offset + i
+            if feature_names and global_idx < len(feature_names):
+                real_name = feature_names[global_idx]
+            else:
+                real_name = f"dim_{global_idx}"
             dimensions.append({
-                "name": dim_info.get("name", f"dim_{i}"),
-                "label": dim_info.get("label", f"维度{i}"),
+                "name": real_name,
+                "label": real_name,
                 "value": float(v),
-                "unit": dim_info.get("unit", "")
+                "unit": ""
             })
         
         groups_detail[external_key] = FeatureGroupDetail(
@@ -351,7 +380,7 @@ async def extract_features(request: FeatureRequest):
         feature_dimensions = build_feature_dimensions(features.tolist(), feature_names)
         
         # 构建增强版分组详情
-        groups_detail = build_groups_detail(grouped, features.tolist())
+        groups_detail = build_groups_detail(grouped, features.tolist(), feature_names)
         
         # 构建响应
         response = FeatureResponse(

@@ -239,7 +239,7 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
     { 
       name: '图结构特征', 
       key: 'graph_structure', 
-      baseline: 0.12, 
+      baseline: 1.0, 
       range: [0, 14], 
       weight: 0.35,
       subFeatures: ['节点数量', '边密度', '平均度数', '最大路径长度', '聚类系数']
@@ -247,7 +247,7 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
     { 
       name: '节点特征', 
       key: 'node', 
-      baseline: 0.12, 
+      baseline: 1.0, 
       range: [15, 54], 
       weight: 0.35,
       subFeatures: ['进程节点占比', '关键进程频率', '文件节点占比', '网络节点占比', '攻击源节点']
@@ -255,7 +255,7 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
     { 
       name: '边特征', 
       key: 'edge', 
-      baseline: 0.12, 
+      baseline: 1.0, 
       range: [55, 79], 
       weight: 0.35,
       subFeatures: ['执行边数量', '读写边数量', '连接边数量', '攻击链深度', '分支因子']
@@ -263,7 +263,7 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
     { 
       name: '序列特征', 
       key: 'sequence', 
-      baseline: 0.10, 
+      baseline: 1.0, 
       range: [80, 109], 
       weight: 0.20,
       subFeatures: ['时间跨度', '操作熵', '突发强度', '周期模式', '加速度评分']
@@ -271,7 +271,7 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
     { 
       name: '语义特征', 
       key: 'semantic', 
-      baseline: 0.10, 
+      baseline: 1.0, 
       range: [110, 129], 
       weight: 0.45,
       subFeatures: ['SQL注入评分', 'Webshell评分', '权限提升评分', '数据渗透评分', '持久化评分']
@@ -342,40 +342,61 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
         // 设置130维原始向量
         setRawVector(data.rawVector || []);
         
-        // 设置分组特征数据
+        // 设置分组特征数据 — 基于130维真实向量计算
+        const rawVec = data.rawVector || [];
         const groupsData: any = {};
         FEATURE_GROUPS.forEach(g => {
+          const [start, end] = g.range;
+          const groupVec = rawVec.slice(start, end + 1);
+          const groupLen = groupVec.length || 1;
+          
+          // 真实计算：该组非零维度
+          const nonZeroVals = groupVec.filter((v: number) => Math.abs(v) > 0.001);
+          const nonZeroCount = nonZeroVals.length;
+          const activeRatio = nonZeroCount / groupLen;
+          
+          // 非零维度的均值（避免大量零值拉低）
+          const nonZeroMean = nonZeroCount > 0 
+            ? nonZeroVals.reduce((s: number, v: number) => s + Math.abs(v), 0) / nonZeroCount 
+            : 0;
+          
+          // 特征强度 = sigmoid(非零均值) × 活跃度权重
+          // sigmoid 将任意正数映射到 0~1：值越大越接近1
+          const sigmoid = (x: number) => 1 / (1 + Math.exp(-x * 2 + 2));
+          const strength = activeRatio > 0 
+            ? sigmoid(nonZeroMean) * (0.3 + 0.7 * activeRatio)
+            : 0;
+          
+          // 获取该组的维度详情
           const groupDetail = data.groups?.[g.key === 'graph_structure' ? 'graphStructure' : g.key];
-          if (groupDetail) {
-            const current = groupDetail.current;
-            const baseline = groupDetail.baseline;
-            const deviation = ((current / baseline - 1) * 100).toFixed(0);
-            
-            // 获取该组的所有维度特征数据
-            const allFeatures = groupDetail.dimensions || [];
-            
-            groupsData[g.key] = {
-              current,
-              baseline,
-              label: current > baseline ? `+${deviation}%` : `${deviation}%`,
-              top3: allFeatures.map((dim: any) => ({
-                name: dim.name,
-                score: dim.value.toFixed(3)
-              }))
-            };
-          }
+          const allFeatures = groupDetail?.dimensions || [];
+          
+          // 百分比标签：直接展示特征强度百分比
+          const pct = Math.round(strength * 100);
+          
+          groupsData[g.key] = {
+            current: strength,
+            baseline: 0,
+            label: `${pct}%`,
+            top3: allFeatures.map((dim: any) => ({
+              name: dim.name,
+              score: dim.value.toFixed(3)
+            }))
+          };
         });
         setFeatureGroups(groupsData);
         
-        // 计算加权评分 - 使用真实的加权算法
+        // 计算加权异常评分 — 基于各组真实特征强度
         let weightedScore = 0;
+        let totalWeight = 0;
         FEATURE_GROUPS.forEach(g => {
           const groupData = groupsData[g.key];
           if (groupData) {
             weightedScore += groupData.current * g.weight;
+            totalWeight += g.weight;
           }
         });
-        setAnomalyScore(Math.min(weightedScore, 1));
+        setAnomalyScore(totalWeight > 0 ? Math.min(weightedScore / totalWeight, 1) : 0);
         
       } catch (error) {
         console.error('特征提取失败:', error);
@@ -500,7 +521,13 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                 {FEATURE_GROUPS.map((group, groupIdx) => {
                   const isHovered = hoveredFeature === group.key;
                   const groupVector = rawVector.slice(group.range[0], group.range[1] + 1);
-                  const groupAvg = groupVector.reduce((a, b) => a + b, 0) / groupVector.length;
+                  const groupLen = groupVector.length || 1;
+                  const nonZeroVals2 = groupVector.filter(v => Math.abs(v) > 0.001);
+                  const nonZero = nonZeroVals2.length;
+                  const activeR = nonZero / groupLen;
+                  const nzMean = nonZero > 0 ? nonZeroVals2.reduce((a, b) => a + Math.abs(b), 0) / nonZero : 0;
+                  const sig = (x: number) => 1 / (1 + Math.exp(-x * 2 + 2));
+                  const groupAvg = activeR > 0 ? sig(nzMean) * (0.3 + 0.7 * activeR) : 0;
                   const isScanning = scanPhase >= 0 && scanPhase <= 4 && scanPhase === groupIdx;
                   const isScanned = scanPhase < 0 || scanPhase > groupIdx;
                   
@@ -601,13 +628,16 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
 
             {/* 5个特征维度卡片 */}
             {FEATURE_GROUPS.map(group => {
-              const data = featureGroups[group.key] || { current: 0, baseline: group.baseline, label: '0%', top3: [] };
-              const ratio = data.current / data.baseline;
-              const isHigh = ratio > 2.5;
-              const isCritical = ratio > 5; // 过载：超过500%
+              const data = featureGroups[group.key] || { current: 0, baseline: 0, label: '0%', top3: [] };
+              // current 是 0~1 的特征强度
+              const strength = data.current;
+              const isHigh = strength > 0.5;
+              const isCritical = strength > 0.8;
               const isVisible = visibleCards.includes(group.key);
-              const barWidth = Math.min((data.current / 1) * 100, 100);
-              const baselinePos = (data.baseline / 1) * 100;
+              // 进度条直接映射 0~1 → 0~100%
+              const barWidth = Math.min(strength * 100, 100);
+              // 基线标记在 30% 位置（表示正常水平参考线）
+              const baselinePos = 30;
               
               return (
                 <div 
@@ -705,154 +735,21 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                   {/* 基线对比数值化 */}
                   <div className="relative z-10 mt-3 text-[10px] font-mono flex items-center justify-between px-3 py-2 bg-slate-950/60 rounded-lg border border-slate-700/40">
                     <div className="flex items-center gap-2">
-                      <span className="text-slate-500">当前测算值:</span>
-                      <span className="text-cyan-300 font-bold">{data.current.toFixed(3)}</span>
+                      <span className="text-slate-500">特征强度:</span>
+                      <span className={`font-bold ${
+                        isCritical ? 'text-red-400' : isHigh ? 'text-orange-400' : 'text-cyan-300'
+                      }`}>{(data.current * 100).toFixed(1)}%</span>
                     </div>
                     <div className="h-3 w-px bg-slate-700" />
                     <div className="flex items-center gap-2">
-                      <span className="text-slate-500">历史基线:</span>
-                      <span className="text-yellow-300 font-bold">{data.baseline.toFixed(3)}</span>
+                      <span className="text-slate-500">活跃维度:</span>
+                      <span className="text-yellow-300 font-bold">{data.label}</span>
                     </div>
                   </div>
                 </div>
               );
             })}
 
-            {/* 子特征详情弹窗 - 中间区域全屏显示 */}
-            {detailModal.visible && (
-              <div 
-                className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl"
-                onClick={() => setDetailModal({ visible: false, feature: null, top3: [] })}
-              >
-                <div 
-                  className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 border-2 border-cyan-500/50 rounded-2xl p-10 w-[95%] max-w-[1600px] h-[90vh] shadow-2xl shadow-cyan-500/20 animate-fadeIn flex flex-col"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {/* 背景光效 */}
-                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(6,182,212,0.15),transparent_50%)]" />
-                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_0%_100%,rgba(168,85,247,0.1),transparent_50%)]" />
-                  
-                  {/* 标题 */}
-                  <div className="relative z-10 mb-6 flex items-center justify-between border-b border-cyan-500/30 pb-4">
-                    <div className="flex items-center gap-4">
-                      <div className="p-3 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 rounded-xl border border-cyan-500/50">
-                        <Activity size={24} className="text-cyan-400" />
-                      </div>
-                      <div>
-                        <div className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400">
-                          {detailModal.feature?.key === 'structure' ? '图谱拓扑特征' : 
-                           detailModal.feature?.key === 'node' ? '节点实体分布' :
-                           detailModal.feature?.key === 'edge' ? '行为路径关联' :
-                           detailModal.feature?.key === 'sequence' ? '时序行为指纹' :
-                           detailModal.feature?.key === 'semantic' ? '攻击语义向量' : detailModal.feature?.name}
-                        </div>
-                        <div className="text-sm text-slate-400 font-mono mt-1">子特征详细分析 · 共 {detailModal.top3.length} 项特征</div>
-                      </div>
-                    </div>
-                    <button 
-                      onClick={() => setDetailModal({ visible: false, feature: null, top3: [] })}
-                      className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-800/50 border border-slate-700 text-slate-400 hover:text-red-400 hover:border-red-500/50 hover:bg-red-500/10 transition-all text-2xl"
-                    >×</button>
-                  </div>
-                  
-                  {/* 所有子特征列表 - 优化表格UI */}
-                  <div className="relative z-10 flex-1 overflow-hidden">
-                    <div className="h-full overflow-y-auto scrollbar-thin pr-2">
-                      <table className="w-full">
-                        <thead className="sticky top-0 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 backdrop-blur-sm z-10 shadow-lg">
-                          <tr className="border-b-2 border-cyan-500/50">
-                            <th className="text-left py-4 px-4 text-xs font-bold text-cyan-300 uppercase tracking-wider">序号</th>
-                            <th className="text-left py-4 px-4 text-xs font-bold text-cyan-300 uppercase tracking-wider">特征名称</th>
-                            <th className="text-center py-4 px-4 text-xs font-bold text-cyan-300 uppercase tracking-wider">特征值</th>
-                            <th className="text-center py-4 px-4 text-xs font-bold text-cyan-300 uppercase tracking-wider">强度分析</th>
-                            <th className="text-center py-4 px-4 text-xs font-bold text-cyan-300 uppercase tracking-wider">状态</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {detailModal.top3.map((item, idx) => {
-                            // 特征名称中文映射
-                            const featureNameMap: Record<string, string> = {
-                              'node_count': '节点总数', 'edge_count': '边总数', 'node_edge_ratio': '节点边比率',
-                              'avg_degree': '平均度数', 'density': '图密度', 'diameter': '图直径',
-                              'avg_clustering': '平均聚类系数', 'connected_components': '连通分量',
-                              'process_node_count': '进程节点数', 'attacker_node_count': '攻击源节点',
-                              'file_node_count': '文件节点数', 'socket_node_count': '网络套接字',
-                              'server_node_count': '服务器节点', 'other_node_count': '其他节点',
-                              'exec_edge_count': '执行边数', 'read_edge_count': '读取边数',
-                              'write_edge_count': '写入边数', 'connect_edge_count': '连接边数',
-                              'fork_edge_count': '分支边数', 'other_edge_count': '其他边数',
-                              'time_span_seconds': '时间跨度(秒)', 'burst_count': '突发次数',
-                              'night_activity': '夜间活动', 'operation_entropy': '操作熄',
-                              'rce_score': '远程执行评分', 'webshell_score': 'WebShell评分',
-                              'privilege_escalation_score': '提权评分', 'sql_injection_score': 'SQL注入评分',
-                              'sensitive_file_access_count': '敏感文件访问', 'critical_process_count': '关键进程数'
-                            };
-                            const chineseName = featureNameMap[item.name] || item.name;
-                            const scoreVal = parseFloat(item.score);
-                            const intensity = Math.min(scoreVal * 100, 100);
-                            
-                            return (
-                              <tr key={idx} className="border-b border-slate-700/20 hover:bg-gradient-to-r hover:from-cyan-500/10 hover:to-purple-500/10 transition-all duration-300 group">
-                                <td className="py-4 px-4">
-                                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-purple-500 flex items-center justify-center text-white text-sm font-black shadow-lg group-hover:scale-110 transition-transform">
-                                    {idx + 1}
-                                  </div>
-                                </td>
-                                <td className="py-4 px-4">
-                                  <div className="text-sm font-bold text-slate-200 group-hover:text-cyan-300 transition-colors">{chineseName}</div>
-                                  <div className="text-xs text-slate-500 font-mono mt-0.5">{item.name}</div>
-                                </td>
-                                <td className="py-4 px-4 text-center">
-                                  <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-900/50 rounded-lg border border-slate-700/50">
-                                    <span className="text-sm font-mono text-cyan-400 font-bold">{item.score}</span>
-                                  </div>
-                                </td>
-                                <td className="py-4 px-4">
-                                  <div className="flex items-center justify-center gap-3">
-                                    <div className="flex-1 max-w-[200px] h-2.5 bg-slate-900/80 rounded-full overflow-hidden border border-slate-700/50">
-                                      <div 
-                                        className={`h-full rounded-full transition-all duration-500 ${
-                                          scoreVal > 0.7 ? 'bg-gradient-to-r from-red-500 via-orange-500 to-red-600' :
-                                          scoreVal > 0.4 ? 'bg-gradient-to-r from-orange-500 via-yellow-500 to-orange-600' :
-                                          'bg-gradient-to-r from-cyan-500 via-blue-500 to-purple-500'
-                                        }`}
-                                        style={{ 
-                                          width: `${intensity}%`,
-                                          boxShadow: scoreVal > 0.7 ? '0 0 10px rgba(239,68,68,0.6)' : 
-                                                     scoreVal > 0.4 ? '0 0 10px rgba(251,146,60,0.6)' : 
-                                                     '0 0 10px rgba(6,182,212,0.6)'
-                                        }}
-                                      />
-                                    </div>
-                                    <span className={`text-xs font-bold min-w-[40px] text-right ${
-                                      scoreVal > 0.7 ? 'text-red-400' :
-                                      scoreVal > 0.4 ? 'text-orange-400' : 'text-cyan-400'
-                                    }`}>{intensity.toFixed(1)}%</span>
-                                  </div>
-                                </td>
-                                <td className="py-4 px-4 text-center">
-                                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
-                                    scoreVal > 0.7 ? 'bg-red-500/20 text-red-300 border border-red-500/50' :
-                                    scoreVal > 0.4 ? 'bg-orange-500/20 text-orange-300 border border-orange-500/50' :
-                                    'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50'
-                                  }`}>
-                                    <div className={`w-2 h-2 rounded-full ${
-                                      scoreVal > 0.7 ? 'bg-red-400 animate-pulse' :
-                                      scoreVal > 0.4 ? 'bg-orange-400' : 'bg-cyan-400'
-                                    }`} />
-                                    {scoreVal > 0.7 ? '高危' : scoreVal > 0.4 ? '警告' : '正常'}
-                                  </span>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         )}
 
@@ -908,6 +805,261 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
           </div>
         </div>
       </div>
+
+      {/* 子特征详情弹窗 - 明亮科技感全屏弹窗 */}
+      {detailModal.visible && (() => {
+        const allItems = detailModal.top3 || [];
+        const activeItems = allItems.filter((item: any) => Math.abs(parseFloat(item.score)) > 0.001);
+        const inactiveItems = allItems.filter((item: any) => Math.abs(parseFloat(item.score)) <= 0.001);
+        const maxVal = Math.max(...allItems.map((item: any) => Math.abs(parseFloat(item.score))), 0.001);
+        const activeCount = activeItems.length;
+        const activeMean = activeCount > 0 ? activeItems.reduce((s: number, item: any) => s + Math.abs(parseFloat(item.score)), 0) / activeCount : 0;
+        const featureNameMap: Record<string, string> = {
+          'node_count': '节点总数', 'edge_count': '边总数', 'graph_density': '图密度',
+          'avg_degree': '平均度数', 'max_degree': '最大度数', 'min_degree': '最小度数',
+          'max_path_length': '最长路径', 'avg_path_length': '平均路径',
+          'connected_components': '连通分量', 'clustering_coefficient': '聚类系数',
+          'graph_diameter': '图直径', 'graph_radius': '图半径',
+          'node_edge_ratio': '节点边比率', 'leaf_node_ratio': '叶子节点比例', 'hub_node_ratio': '枢纽节点比例',
+          'process_node_count': '进程节点数', 'file_node_count': '文件节点数',
+          'socket_node_count': '网络套接字', 'attacker_node_count': '攻击源节点', 'other_node_count': '其他节点',
+          'exec_edge_count': '执行边数', 'read_edge_count': '读取边数',
+          'write_edge_count': '写入边数', 'connect_edge_count': '连接边数',
+          'fork_edge_count': '分支边数', 'other_edge_count': '其他边数',
+          'cross_type_ratio': '跨层调用频率', 'self_loop_count': '自环数',
+          'bidirectional_edge_count': '双向边数', 'attack_chain_depth': '攻击链深度',
+          'process_to_process': '进程→进程', 'process_to_file': '进程→文件', 'file_to_process': '文件→进程',
+          'process_to_socket': '进程→套接字', 'socket_to_process': '套接字→进程',
+          'attacker_to_process': '攻击者→进程', 'attacker_to_file': '攻击者→文件',
+          'chain_length_avg': '平均链长', 'chain_length_max': '最大链长',
+          'branch_factor_avg': '平均分支因子', 'branch_factor_max': '最大分支因子',
+          'edge_weight_sum': '边权重总和', 'edge_weight_avg': '平均边权重', 'edge_weight_max': '最大边权重',
+          'critical_path_length': '关键路径长度',
+          'time_span_seconds': '时间跨度(秒)', 'time_span_minutes': '时间跨度(分)', 'time_span_hours': '时间跨度(时)',
+          'interval_mean': '平均间隔', 'interval_std': '间隔标准差', 'interval_min': '最小间隔',
+          'interval_max': '最大间隔', 'interval_median': '中位间隔', 'interval_q25': '间隔Q25', 'interval_q75': '间隔Q75',
+          'burst_count': '突发次数', 'burst_intensity': '突发强度',
+          'operation_entropy': '操作熵', 'node_type_entropy': '节点类型熵', 'edge_type_entropy': '边类型熵',
+          'sequence_length': '序列长度', 'unique_operations': '唯一操作数',
+          'repeat_pattern_count': '重复模式数', 'periodic_pattern_score': '周期性评分',
+          'acceleration_score': '加速度评分', 'deceleration_score': '减速度评分',
+          'morning_activity': '上午活动', 'afternoon_activity': '下午活动',
+          'evening_activity': '晚间活动', 'night_activity': '夜间活动',
+          'weekday_activity': '工作日活动', 'weekend_activity': '周末活动',
+          'first_to_critical': '首事件→关键事件', 'critical_to_last': '关键事件→末事件', 'attack_phase_duration': '攻击阶段时长',
+          'sql_injection_score': 'SQL注入评分', 'xss_score': 'XSS评分',
+          'webshell_score': 'WebShell评分', 'traversal_score': '目录遍历评分', 'rce_score': '远程执行评分',
+          'privilege_escalation_score': '提权评分', 'data_exfiltration_score': '数据窃取评分',
+          'persistence_score': '持久化评分', 'overall_threat_score': '综合威胁评分',
+          'confidence_score': '置信度评分', 'anomaly_score': '异常评分',
+          'sensitive_file_access_count': '敏感文件访问数', 'sensitive_file_access_ratio': '敏感文件访问率',
+          'critical_process_count': '关键进程数', 'critical_process_ratio': '关键进程率',
+          'lateral_movement_score': '横向移动评分', 'reconnaissance_score': '侦察评分',
+          'attack_stage_initial': '初始阶段', 'attack_stage_exploit': '利用阶段', 'attack_stage_post': '后渗透阶段'
+        };
+        // 为关键进程频率生成映射
+        const keyProcs = ['bash','sh','zsh','python','python3','perl','ruby','wget','curl','nc','netcat','ncat','ssh','scp','sftp','ftp','cat','less','more','head','tail','grep','chmod','chown','chgrp','sudo','su','passwd','nginx','apache','httpd','php-fpm','mysql','postgres','whoami','id'];
+        keyProcs.forEach(p => { featureNameMap[`proc_${p}_freq`] = `${p} 进程频率`; });
+
+        const renderRow = (item: any, idx: number, globalIdx: number) => {
+          const cn = featureNameMap[item.name] || item.name;
+          const sv = parseFloat(item.score);
+          const absV = Math.abs(sv);
+          const pct = maxVal > 0 ? Math.min((absV / maxVal) * 100, 100) : 0;
+          return (
+            <tr key={globalIdx} className="border-b border-slate-700/10 hover:bg-cyan-500/5 transition-all group">
+              <td className="py-3 px-4 w-14">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black ${
+                  absV > 0.7 ? 'bg-red-500/30 text-red-300 border border-red-500/40 shadow-lg shadow-red-500/20' :
+                  absV > 0.001 ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' :
+                  'bg-slate-800/50 text-slate-600 border border-slate-700/30'
+                }`}>{idx + 1}</div>
+              </td>
+              <td className="py-3 px-4">
+                <div className="text-sm font-bold text-slate-200 group-hover:text-cyan-300 transition-colors">{cn}</div>
+                <div className="text-xs text-slate-500 font-mono mt-0.5">{item.name}</div>
+              </td>
+              <td className="py-3 px-4 text-center w-28">
+                <span className={`text-base font-mono font-black ${absV > 0.7 ? 'text-red-400' : absV > 0.001 ? 'text-cyan-400' : 'text-slate-600'}`}>{item.score}</span>
+              </td>
+              <td className="py-3 px-4 w-72">
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-3 bg-slate-900/80 rounded-full overflow-hidden border border-slate-700/30">
+                    <div className={`h-full rounded-full transition-all duration-500 ${
+                      absV > 0.7 ? 'bg-gradient-to-r from-red-500 to-orange-500' :
+                      absV > 0.4 ? 'bg-gradient-to-r from-orange-500 to-yellow-500' :
+                      absV > 0.001 ? 'bg-gradient-to-r from-cyan-500 to-blue-500' :
+                      'bg-slate-700'
+                    }`} style={{ width: `${pct}%`, boxShadow: absV > 0.7 ? '0 0 8px rgba(239,68,68,0.5)' : absV > 0.001 ? '0 0 6px rgba(6,182,212,0.4)' : 'none' }} />
+                  </div>
+                  <span className="text-sm font-mono font-bold text-slate-400 w-12 text-right">{pct.toFixed(0)}%</span>
+                </div>
+              </td>
+              <td className="py-3 px-4 text-center w-20">
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold ${
+                  absV > 0.7 ? 'bg-red-500/20 text-red-300 border border-red-500/40' :
+                  absV > 0.4 ? 'bg-orange-500/20 text-orange-300 border border-orange-500/40' :
+                  absV > 0.001 ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30' :
+                  'bg-slate-800/50 text-slate-600 border border-slate-700/30'
+                }`}>
+                  <div className={`w-2 h-2 rounded-full ${
+                    absV > 0.7 ? 'bg-red-400 animate-pulse' : absV > 0.4 ? 'bg-orange-400' : absV > 0.001 ? 'bg-cyan-400' : 'bg-slate-700'
+                  }`} />
+                  {absV > 0.7 ? '高危' : absV > 0.4 ? '警告' : absV > 0.001 ? '正常' : '-'}
+                </span>
+              </td>
+            </tr>
+          );
+        };
+
+        return (
+          <div 
+            className="fixed inset-0 z-[9999] flex items-center justify-center"
+            style={{ background: 'linear-gradient(135deg, rgba(15,23,42,0.95) 0%, rgba(30,41,59,0.95) 50%, rgba(15,23,42,0.95) 100%)', backdropFilter: 'blur(20px)' }}
+            onClick={() => setDetailModal({ visible: false, feature: null, top3: [] })}
+          >
+            <div 
+              className="relative rounded-2xl w-[92vw] max-w-[1500px] h-[88vh] flex flex-col overflow-hidden"
+              style={{ background: 'linear-gradient(180deg, #0f172a 0%, #1e293b 40%, #0f172a 100%)', border: '1px solid rgba(56,189,248,0.3)', boxShadow: '0 0 60px rgba(6,182,212,0.15), 0 0 120px rgba(6,182,212,0.05), inset 0 1px 0 rgba(255,255,255,0.05)' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* 顶部发光线 */}
+              <div className="absolute top-0 left-[10%] right-[10%] h-[2px]" style={{ background: 'linear-gradient(90deg, transparent, #22d3ee, #a78bfa, #22d3ee, transparent)' }} />
+              {/* 网格背景 */}
+              <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: 'linear-gradient(#38bdf8 1px, transparent 1px), linear-gradient(90deg, #38bdf8 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
+              {/* 光晕 */}
+              <div className="absolute top-0 left-1/4 w-96 h-96 rounded-full" style={{ background: 'radial-gradient(circle, rgba(34,211,238,0.12) 0%, transparent 70%)' }} />
+              <div className="absolute bottom-0 right-1/4 w-96 h-96 rounded-full" style={{ background: 'radial-gradient(circle, rgba(167,139,250,0.08) 0%, transparent 70%)' }} />
+              
+              {/* 标题栏 */}
+              <div className="relative z-10 px-8 py-5 flex items-center justify-between shrink-0" style={{ borderBottom: '1px solid rgba(56,189,248,0.15)' }}>
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, rgba(34,211,238,0.2), rgba(167,139,250,0.2))', border: '1px solid rgba(34,211,238,0.4)' }}>
+                    <Activity size={22} className="text-cyan-400" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-black" style={{ background: 'linear-gradient(90deg, #22d3ee, #a78bfa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                      {detailModal.feature?.key === 'graph_structure' ? '图结构特征分析' : 
+                       detailModal.feature?.key === 'node' ? '节点实体分布分析' :
+                       detailModal.feature?.key === 'edge' ? '行为路径关联分析' :
+                       detailModal.feature?.key === 'sequence' ? '时序行为指纹分析' :
+                       detailModal.feature?.key === 'semantic' ? '攻击语义向量分析' : detailModal.feature?.name}
+                    </h2>
+                    <p className="text-sm text-slate-400 mt-1">PIDS 特征向量实时提取 · 共 <span className="text-cyan-400 font-bold">{allItems.length}</span> 个维度</p>
+                  </div>
+                </div>
+                <button onClick={() => setDetailModal({ visible: false, feature: null, top3: [] })}
+                  className="w-10 h-10 flex items-center justify-center rounded-xl text-slate-400 hover:text-white hover:bg-red-500/20 transition-all text-xl" style={{ border: '1px solid rgba(100,116,139,0.3)' }}>×</button>
+              </div>
+              
+              {/* 统计摘要 */}
+              <div className="relative z-10 px-8 py-4 shrink-0 grid grid-cols-5 gap-4">
+                {[
+                  { label: '总维度数', val: `${allItems.length}`, sub: 'dimensions', accent: '#22d3ee' },
+                  { label: '活跃维度', val: `${activeCount}`, sub: `/ ${allItems.length}`, accent: activeCount > allItems.length * 0.5 ? '#f87171' : '#34d399' },
+                  { label: '活跃比率', val: `${(activeCount / Math.max(allItems.length, 1) * 100).toFixed(0)}%`, sub: 'active rate', accent: '#a78bfa' },
+                  { label: '非零均值', val: activeMean.toFixed(2), sub: 'mean value', accent: '#38bdf8' },
+                  { label: '峰值', val: maxVal.toFixed(2), sub: 'max value', accent: maxVal > 5 ? '#f87171' : '#22d3ee' },
+                ].map((s, i) => (
+                  <div key={i} className="rounded-xl px-4 py-3" style={{ background: 'rgba(30,41,59,0.6)', border: `1px solid ${s.accent}22` }}>
+                    <div className="text-xs text-slate-500 mb-1">{s.label}</div>
+                    <div className="text-2xl font-black font-mono" style={{ color: s.accent }}>{s.val}</div>
+                    <div className="text-[10px] text-slate-600 font-mono">{s.sub}</div>
+                  </div>
+                ))}
+              </div>
+              
+              {/* 数据表格 */}
+              <div className="relative z-10 flex-1 overflow-hidden px-8 pb-3">
+                <div className="h-full overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#475569 #1e293b' }}>
+                  {activeItems.length > 0 && (
+                    <>
+                      <div className="sticky top-0 z-10 py-2 px-1 mb-2 flex items-center gap-2" style={{ background: 'rgba(15,23,42,0.95)', borderBottom: '1px solid rgba(34,211,238,0.2)' }}>
+                        <div className="w-1.5 h-5 rounded-full bg-cyan-400" />
+                        <span className="text-sm font-bold text-cyan-300">活跃特征维度</span>
+                        <span className="text-xs text-slate-500 ml-1">({activeCount} 项检测到数值)</span>
+                      </div>
+                      <div className="grid gap-2 mb-6">
+                        {activeItems.map((item: any, idx: number) => {
+                          const cn = featureNameMap[item.name] || item.name;
+                          const sv = parseFloat(item.score);
+                          const absV = Math.abs(sv);
+                          const pct = maxVal > 0 ? Math.min((absV / maxVal) * 100, 100) : 0;
+                          const barColor = absV > 5 ? 'linear-gradient(90deg, #ef4444, #f97316)' : absV > 1 ? 'linear-gradient(90deg, #f59e0b, #eab308)' : 'linear-gradient(90deg, #22d3ee, #3b82f6)';
+                          const statusColor = absV > 5 ? '#f87171' : absV > 1 ? '#fbbf24' : '#34d399';
+                          const statusText = absV > 5 ? '异常' : absV > 1 ? '偏高' : '正常';
+                          return (
+                            <div key={idx} className="flex items-center gap-4 px-4 py-3 rounded-xl group hover:scale-[1.005] transition-all" style={{ background: 'rgba(30,41,59,0.4)', border: '1px solid rgba(71,85,105,0.2)' }}>
+                              <div className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-black text-white shrink-0" style={{ background: barColor }}>{idx + 1}</div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-bold text-slate-200">{cn}</span>
+                                  <span className="text-[10px] text-slate-600 font-mono truncate">{item.name}</span>
+                                </div>
+                                <div className="mt-1.5 flex items-center gap-3">
+                                  <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(15,23,42,0.8)' }}>
+                                    <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, background: barColor, boxShadow: `0 0 8px ${statusColor}40` }} />
+                                  </div>
+                                  <span className="text-xs font-mono font-bold text-slate-400 w-10 text-right">{pct.toFixed(0)}%</span>
+                                </div>
+                              </div>
+                              <div className="text-right shrink-0 w-20">
+                                <div className="text-lg font-black font-mono" style={{ color: statusColor }}>{sv.toFixed(sv >= 10 ? 0 : sv >= 1 ? 1 : 3)}</div>
+                              </div>
+                              <div className="shrink-0 w-16 text-center">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: `${statusColor}15`, color: statusColor, border: `1px solid ${statusColor}30` }}>
+                                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: statusColor }} />
+                                  {statusText}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                  {inactiveItems.length > 0 && (
+                    <>
+                      <div className="sticky top-0 z-10 py-2 px-1 mb-2 flex items-center gap-2" style={{ background: 'rgba(15,23,42,0.95)', borderBottom: '1px solid rgba(71,85,105,0.2)' }}>
+                        <div className="w-1.5 h-5 rounded-full bg-slate-600" />
+                        <span className="text-sm font-bold text-slate-500">未激活维度</span>
+                        <span className="text-xs text-slate-600 ml-1">({inactiveItems.length} 项值为零)</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 opacity-60">
+                        {inactiveItems.map((item: any, idx: number) => {
+                          const cn = featureNameMap[item.name] || item.name;
+                          return (
+                            <div key={idx} className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: 'rgba(30,41,59,0.3)', border: '1px solid rgba(51,65,85,0.2)' }}>
+                              <span className="text-xs text-slate-500 font-mono w-5">{idx + 1}</span>
+                              <span className="text-xs text-slate-500 truncate">{cn}</span>
+                              <span className="text-xs text-slate-600 font-mono ml-auto">0</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+              
+              {/* 底部 */}
+              <div className="relative z-10 px-8 py-3 shrink-0 flex items-center justify-between" style={{ borderTop: '1px solid rgba(71,85,105,0.2)', background: 'rgba(15,23,42,0.5)' }}>
+                <div className="flex items-center gap-4">
+                  <span className="text-xs text-slate-500 font-mono">PIDS Feature Vector · Real-time</span>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="text-xs text-emerald-400 font-mono">LIVE</span>
+                  </div>
+                </div>
+                <button onClick={() => setDetailModal({ visible: false, feature: null, top3: [] })}
+                  className="px-6 py-2 rounded-lg text-sm font-bold text-cyan-300 transition-all hover:scale-105" style={{ background: 'linear-gradient(135deg, rgba(34,211,238,0.1), rgba(167,139,250,0.1))', border: '1px solid rgba(34,211,238,0.3)' }}>
+                  关闭面板
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
@@ -2528,6 +2680,16 @@ const ThreatTracing: React.FC = () => {
     };
   }, []);
 
+  // 切换回geo视图时触发ECharts resize，修复从PIDS切回后地图空白的问题
+  useEffect(() => {
+    if (viewMode === 'geo' && chartInstance) {
+      const timer = setTimeout(() => {
+        chartInstance.resize();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [viewMode, chartInstance]);
+
   // 监听 tracingEvents 更新地图连线
   useEffect(() => {
     // 🔥 修复：只在地理视图模式下更新地图，避免 InvalidStateError
@@ -2679,8 +2841,8 @@ const ThreatTracing: React.FC = () => {
         <div className="absolute inset-0 rounded-2xl border border-cyan-500/20"></div>
         <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent"></div>
         
-        {viewMode === 'geo' ? (
-          <>
+        {/* Geo视图 - 始终渲染，用display控制显隐，避免ECharts实例被dispose */}
+        <div className="flex-1 flex" style={{ display: viewMode === 'geo' ? 'flex' : 'none' }}>
             {/* Map Container */}
             <div className="flex-1 relative">
                {/* Legend */}
@@ -2765,10 +2927,10 @@ const ThreatTracing: React.FC = () => {
                    </div>
                  )}
             </div>
-          </>
-        ) : (
-          /* PIDS因果溯源视图 - 聚合展示 */
-          <div className="flex-1 flex h-[calc(100vh-64px)]">
+        </div>
+
+        {/* PIDS因果溯源视图 - 用display控制显隐 */}
+        <div className="flex-1 flex h-[calc(100vh-64px)]" style={{ display: viewMode === 'pids' ? 'flex' : 'none' }}>
             {/* 左侧聚合列表 - 科技感攻击源导航 (18%) */}
             <div className="w-[18%] min-w-[240px] max-w-[280px] border-r border-cyan-500/20 flex flex-col bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 relative overflow-hidden">
               {/* 顶部装饰线 */}
@@ -3009,7 +3171,6 @@ const ThreatTracing: React.FC = () => {
               </div>
             )}
           </div>
-        )}
       </div>
     </div>
   );
