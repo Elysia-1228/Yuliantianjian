@@ -136,25 +136,33 @@ l1_detector: Optional[EnsembleDetector] = None
 l2_detector: Optional[VAEClassifier] = None
 
 def _load_trained_models():
-    """启动时加载训练好的L1/L2模型"""
+    """启动时加载训练好的L1/L2模型（加载失败不阻塞启动）"""
     global l1_detector, l2_detector
     model_dir = os.path.join(os.path.dirname(__file__), 'behavior_modeling', 'models')
     
     # L1 集成检测器
     l1_path = os.path.join(model_dir, 'ensemble_v1.0.pkl')
     if os.path.exists(l1_path):
-        l1_detector = EnsembleDetector()
-        l1_detector.load(l1_path)
-        logger.info(f"✅ L1 集成检测器已加载: {l1_path}")
+        try:
+            l1_detector = EnsembleDetector()
+            l1_detector.load(l1_path)
+            logger.info(f"✅ L1 集成检测器已加载: {l1_path}")
+        except Exception as e:
+            logger.warning(f"⚠️ L1 模型加载失败(可能缺少xgboost等依赖): {e}")
+            l1_detector = None
     else:
         logger.warning(f"⚠️ L1 模型不存在: {l1_path}")
     
     # L2 VAE+MLP
     l2_path = os.path.join(model_dir, 'vae_classifier_v1.0.pt')
     if os.path.exists(l2_path):
-        l2_detector = VAEClassifier(input_dim=130, device='cpu')
-        l2_detector.load(l2_path)
-        logger.info(f"✅ L2 VAE+MLP已加载: {l2_path}")
+        try:
+            l2_detector = VAEClassifier(input_dim=130, device='cpu')
+            l2_detector.load(l2_path)
+            logger.info(f"✅ L2 VAE+MLP已加载: {l2_path}")
+        except Exception as e:
+            logger.warning(f"⚠️ L2 模型加载失败(可能缺少torch等依赖): {e}")
+            l2_detector = None
     else:
         logger.warning(f"⚠️ L2 模型不存在: {l2_path}")
 
@@ -596,8 +604,8 @@ async def detect_v2(request: DetectV2Request):
     confidence = abs(final_score - 0.5) * 2
     
     logger.info(f"🔍 检测完成 | {threat_id} | {final_pred} | "
-                f"L1={l1_score:.3f if l1_score else 'N/A'} | "
-                f"L2={l2_score:.3f if l2_score else 'N/A'} | {elapsed}ms")
+                f"L1={f'{l1_score:.3f}' if l1_score is not None else 'N/A'} | "
+                f"L2={f'{l2_score:.3f}' if l2_score is not None else 'N/A'} | {elapsed}ms")
     
     return DetectV2Response(
         success=True, threatId=threat_id,

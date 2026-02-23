@@ -480,7 +480,7 @@ class VAEClassifier:
     def load(self, path: str):
         """加载模型"""
         import torch
-        data = torch.load(path, map_location=self.device_name)
+        data = torch.load(path, map_location=self.device_name, weights_only=False)
         self.scaler = data['scaler']
         self.input_dim = data['input_dim']
         self.latent_dim = data['latent_dim']

@@ -410,8 +410,10 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
               useL2: true
             })
           });
+          console.log('[PIDS Detect] 响应状态:', detectRes.status);
           if (detectRes.ok) {
             const detectData = await detectRes.json();
+            console.log('[PIDS Detect] 检测结果:', detectData);
             setDetectResult({
               prediction: detectData.prediction,
               l1Score: detectData.l1Score,
@@ -652,12 +654,13 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                       }`}>{anomalyScore > 0.8 ? '极高' : anomalyScore > 0.5 ? '高' : '中'}</span>
                     </p>
                     {detectResult && (
-                      <p className="animate-[typing_2s_steps(60)_5s_both] opacity-0">
+                      <p className="mt-1 transition-opacity duration-500">
                         <span className="text-green-400">▶</span> 模型检测：<span className={`font-black ${detectResult.prediction === 'anomaly' ? 'text-red-400' : 'text-green-400'}`}>
-                          {detectResult.prediction === 'anomaly' ? '异常入侵' : '正常行为'}</span>
+                          {detectResult.prediction === 'anomaly' ? '⚠ 异常入侵' : '✓ 正常行为'}</span>
                         {' '}| 检测层：<span className="text-cyan-400 font-bold">{detectResult.detectionLayer}</span>
                         {detectResult.l1Score !== null && <span className="text-slate-400"> | L1={detectResult.l1Score.toFixed(3)}</span>}
                         {detectResult.l2Score !== null && <span className="text-slate-400"> | L2={detectResult.l2Score.toFixed(3)}</span>}
+                        <span className="text-slate-500"> | 置信度: {(detectResult.confidence * 100).toFixed(0)}%</span>
                       </p>
                     )}
                   </div>
