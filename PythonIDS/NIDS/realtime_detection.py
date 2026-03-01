@@ -46,17 +46,17 @@ CLEAN_INTERVAL = 30
 ALERT_COOLDOWN = 10
 
 # ========== 规则引擎配置 ==========
-RULE_PORTSCAN_THRESHOLD = 50
-RULE_PORTSCAN_WINDOW = 10
-RULE_SYNFLOOD_THRESHOLD = 500
+RULE_PORTSCAN_THRESHOLD = 15
+RULE_PORTSCAN_WINDOW = 30
+RULE_SYNFLOOD_THRESHOLD = 100
 RULE_SYNFLOOD_WINDOW = 10
-RULE_BRUTEFORCE_THRESHOLD = 20
+RULE_BRUTEFORCE_THRESHOLD = 8
 RULE_BRUTEFORCE_WINDOW = 30
-RULE_UDPFLOOD_THRESHOLD = 2000
+RULE_UDPFLOOD_THRESHOLD = 500
 RULE_UDPFLOOD_WINDOW = 10
-RULE_ICMPFLOOD_THRESHOLD = 200
+RULE_ICMPFLOOD_THRESHOLD = 50
 RULE_ICMPFLOOD_WINDOW = 10
-RULE_SUSPICIOUS_THRESHOLD = 12
+RULE_SUSPICIOUS_THRESHOLD = 6
 RULE_SUSPICIOUS_WINDOW = 30
 
 # BruteForce 服务端口 → 名称
@@ -298,7 +298,7 @@ def model_classify(flow_key):
         "attack_prob": attack_prob,
         "benign_prob": benign_prob,
         "real_score": real_prob,
-        "is_attack": attack_prob > 0.5,
+        "is_attack": attack_prob > 0.85 and real_prob > ANOMALY_THRESHOLD,
     }
 
 
@@ -361,11 +361,19 @@ def packet_callback(packet):
     # ===== 2. 规则引擎检测（逐包实时） =====
     rule_alerts = rule_engine_check(packet, src_ip, dst_ip, src_port, dst_port, proto)
 
+    # ===== 3. TransEC-GAN 模型分类（流级别） =====
+    model_result = None
+    if discriminator is not None and not rule_alerts:
+        flow = flows.get(flow_key)
+        if flow and len(flow["feature_window"]) >= 8:
+            total_pkts = flow["stats"].fwd_packets + flow["stats"].bwd_packets if flow["stats"] else 0
+            if total_pkts % 10 == 0:
+                model_result = model_classify(flow_key)
+
     if rule_alerts:
         now = time.time()
         for alert in rule_alerts:
             attack_class = alert["type"]
-            # 告警去重：同攻击类型+同IP对 ALERT_COOLDOWN 秒内只输出一次
             alert_key = (src_ip, dst_ip, attack_class)
             if alert_key in alert_history and (now - alert_history[alert_key]) < ALERT_COOLDOWN:
                 stats["attack_count"] += 1
@@ -393,6 +401,36 @@ def packet_callback(packet):
                 "status": "未处理",
             }
             send_alert(flow_key, payload)
+    elif model_result and model_result["is_attack"]:
+        now = time.time()
+        attack_class = model_result["attack_class"]
+        confidence = model_result["confidence"]
+        attack_prob = model_result["attack_prob"]
+        alert_key = (src_ip, dst_ip, f"TransEC-GAN-{attack_class}")
+        if alert_key not in alert_history or (now - alert_history[alert_key]) >= ALERT_COOLDOWN:
+            alert_history[alert_key] = now
+            stats["attack_count"] += 1
+            logger.info(
+                f"{COLORS['yellow']}🟡 TransEC-GAN模型检测: {attack_class} "
+                f"| {src_ip}:{src_port} → {dst_ip}:{dst_port} "
+                f"| 攻击概率={attack_prob:.1%} 置信度={confidence:.1%}"
+                f"{COLORS['reset']}"
+            )
+            proto_name = "TCP" if proto == 6 else ("UDP" if proto == 17 else ("ICMP" if proto == 1 else str(proto)))
+            payload = {
+                "threatId": f"NIDS-GAN-{int(time.time()*1000)}",
+                "threatLevel": 2,
+                "impactScope": f"{src_ip}:{src_port} -> {dst_ip}:{dst_port} | TransEC-GAN:{attack_class}",
+                "occurTime": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "sourceIp": src_ip,
+                "targetIp": dst_ip,
+                "attackType": attack_class,
+                "message": f"[TransEC-GAN-{proto_name}] {src_ip}:{src_port} → {dst_ip}:{dst_port} | {attack_class} (prob={attack_prob:.1%})",
+                "status": "未处理",
+            }
+            send_alert(flow_key, payload)
+        else:
+            stats["attack_count"] += 1
     else:
         stats["normal_count"] += 1
 

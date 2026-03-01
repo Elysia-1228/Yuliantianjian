@@ -37,101 +37,75 @@ def parse_ports(port_str):
 
 
 # ========== 1. SYN 半开扫描 ==========
-def syn_scan(target, ports, delay=0.02):
+def syn_scan(target, ports, delay=0.01):
     """
-    SYN扫描（半开扫描）：发送SYN包，收到SYN-ACK=端口开放，RST=关闭
+    SYN扫描（半开扫描）：快速发送SYN包，不等待响应
     特征：大量SYN包，无完整三次握手
     """
     print(f"[SYN扫描] 目标={target}, 端口数={len(ports)}")
-    open_ports = []
-    fixed_sport = random.randint(40000, 50000)  # 固定源端口便于NIDS追踪流
+    fixed_sport = random.randint(40000, 50000)
     for port in ports:
-        # 每个端口发3个SYN探测（增加NIDS可见性）
         for _ in range(3):
             pkt = IP(dst=target) / TCP(sport=fixed_sport, dport=port, flags="S")
-            resp = sr1(pkt, timeout=0.5)
-            if resp and resp.haslayer(TCP):
-                if resp[TCP].flags == 0x12:  # SYN-ACK
-                    open_ports.append(port)
-                    send(IP(dst=target) / TCP(sport=fixed_sport, dport=port, flags="R"))
-                    break
+            send(pkt, verbose=0)
             time.sleep(delay)
-    print(f"[SYN扫描] 完成，发现 {len(open_ports)} 个开放端口: {open_ports}")
-    return open_ports
+    print(f"[SYN扫描] 完成，已发送 {len(ports)*3} 个SYN探测包")
 
 
 # ========== 2. FIN 扫描 ==========
-def fin_scan(target, ports, delay=0.05):
+def fin_scan(target, ports, delay=0.01):
     """
-    FIN扫描：发送FIN包，无响应=端口开放或被过滤，RST=关闭
+    FIN扫描：快速发送FIN包
     特征：FIN标志位，绕过简单防火墙
     """
     print(f"[FIN扫描] 目标={target}, 端口数={len(ports)}")
-    open_ports = []
     for port in ports:
         pkt = IP(dst=target) / TCP(sport=RandShort(), dport=port, flags="F")
-        resp = sr1(pkt, timeout=1)
-        if resp is None:
-            open_ports.append(port)
+        send(pkt, verbose=0)
         time.sleep(delay)
-    print(f"[FIN扫描] 完成，可能开放端口: {open_ports[:20]}{'...' if len(open_ports)>20 else ''}")
-    return open_ports
+    print(f"[FIN扫描] 完成，已发送 {len(ports)} 个FIN探测包")
 
 
 # ========== 3. NULL 扫描 ==========
-def null_scan(target, ports, delay=0.05):
+def null_scan(target, ports, delay=0.01):
     """
-    NULL扫描：发送无标志位的TCP包，无响应=开放或过滤，RST=关闭
+    NULL扫描：快速发送无标志位的TCP包
     特征：flags=0，异常TCP行为
     """
     print(f"[NULL扫描] 目标={target}, 端口数={len(ports)}")
-    open_ports = []
     for port in ports:
         pkt = IP(dst=target) / TCP(sport=RandShort(), dport=port, flags="")
-        resp = sr1(pkt, timeout=1)
-        if resp is None:
-            open_ports.append(port)
+        send(pkt, verbose=0)
         time.sleep(delay)
-    print(f"[NULL扫描] 完成，可能开放端口: {open_ports[:20]}{'...' if len(open_ports)>20 else ''}")
-    return open_ports
+    print(f"[NULL扫描] 完成，已发送 {len(ports)} 个NULL探测包")
 
 
 # ========== 4. XMAS 扫描 ==========
-def xmas_scan(target, ports, delay=0.05):
+def xmas_scan(target, ports, delay=0.01):
     """
-    XMAS扫描：发送FIN+PSH+URG标志包（"圣诞树"），无响应=开放，RST=关闭
+    XMAS扫描：快速发送FIN+PSH+URG标志包（"圣诞树"）
     特征：FPU标志组合，高度异常
     """
     print(f"[XMAS扫描] 目标={target}, 端口数={len(ports)}")
-    open_ports = []
     for port in ports:
         pkt = IP(dst=target) / TCP(sport=RandShort(), dport=port, flags="FPU")
-        resp = sr1(pkt, timeout=1)
-        if resp is None:
-            open_ports.append(port)
+        send(pkt, verbose=0)
         time.sleep(delay)
-    print(f"[XMAS扫描] 完成，可能开放端口: {open_ports[:20]}{'...' if len(open_ports)>20 else ''}")
-    return open_ports
+    print(f"[XMAS扫描] 完成，已发送 {len(ports)} 个XMAS探测包")
 
 
 # ========== 5. UDP 扫描 ==========
-def udp_scan(target, ports, delay=0.1):
+def udp_scan(target, ports, delay=0.01):
     """
-    UDP扫描：发送空UDP包，ICMP不可达=关闭，无响应=可能开放
-    特征：UDP探测包，速度较慢
+    UDP扫描：快速发送空UDP包
+    特征：UDP探测包
     """
     print(f"[UDP扫描] 目标={target}, 端口数={len(ports)}")
-    open_ports = []
     for port in ports:
         pkt = IP(dst=target) / UDP(sport=RandShort(), dport=port)
-        resp = sr1(pkt, timeout=2)
-        if resp is None:
-            open_ports.append(port)
-        elif resp.haslayer(ICMP):
-            pass  # 端口关闭
+        send(pkt, verbose=0)
         time.sleep(delay)
-    print(f"[UDP扫描] 完成，可能开放端口: {open_ports[:20]}{'...' if len(open_ports)>20 else ''}")
-    return open_ports
+    print(f"[UDP扫描] 完成，已发送 {len(ports)} 个UDP探测包")
 
 
 # ========== 主入口 ==========
