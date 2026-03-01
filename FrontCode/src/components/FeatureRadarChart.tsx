@@ -43,11 +43,11 @@ const FeatureRadarChart: React.FC<FeatureRadarChartProps> = ({
     };
 
     return [
-      { name: '图结构特征', value: avg(groups.graphStructure), max: 1 },
-      { name: '节点特征', value: avg(groups.node), max: 1 },
-      { name: '边特征', value: avg(groups.edge), max: 1 },
-      { name: '序列特征', value: avg(groups.sequence), max: 1 },
-      { name: '语义特征', value: avg(groups.semantic), max: 1 }
+      { name: '图结构', value: avg(groups.graphStructure), max: 1 },
+      { name: '节点', value: avg(groups.node), max: 1 },
+      { name: '边', value: avg(groups.edge), max: 1 },
+      { name: '序列', value: avg(groups.sequence), max: 1 },
+      { name: '语义', value: avg(groups.semantic), max: 1 }
     ];
   };
 
@@ -139,12 +139,14 @@ const FeatureRadarChart: React.FC<FeatureRadarChartProps> = ({
       },
       radar: {
         center: ['50%', '55%'],
-        radius: '60%',
+        radius: '55%',
         indicator: data.map(d => ({ name: d.name, max: d.max })),
         axisName: {
           color: '#94a3b8',
-          fontSize: 12
+          fontSize: 12,
+          padding: [0, 4],
         },
+        nameGap: 12,
         splitArea: {
           areaStyle: {
             color: ['rgba(59, 130, 246, 0.1)', 'rgba(59, 130, 246, 0.05)']

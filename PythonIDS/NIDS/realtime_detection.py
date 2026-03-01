@@ -22,6 +22,8 @@ NIDS 实时检测脚本
 
 import sys
 import os
+import re
+import json
 import time
 import threading
 import requests
@@ -92,6 +94,179 @@ UDPFLOOD_PORT_MAP = {
 
 RULE_BRUTEFORCE_PORTS = set(BRUTEFORCE_PORT_MAP.keys())
 RULE_SUSPICIOUS_PORTS = set(SUSPICIOUS_PORT_MAP.keys())
+
+# ========== 攻击类型 → 基础威胁等级（基于安全领域标准严重性分级） ==========
+# 等级: 1=信息, 2=低风险, 3=中风险, 4=高风险, 5=严重
+ATTACK_BASE_SEVERITY = {
+    # DoS — 拒绝服务，影响可用性
+    "DoS/SYN Flood": 3, "DoS/UDP Flood": 3, "DoS/ICMP Flood": 3,
+    "DoS/Slowloris": 3, "DoS/R.U.D.Y.": 3, "DoS/TCP RST Flood": 3,
+    "DoS/HTTP Flood": 3, "DoS/HTTPS Flood": 3,
+    # DDoS — 分布式拒绝服务，大规模影响
+    "DDoS/HTTP Flood": 4, "DDoS/DNS Flood": 4, "DDoS/NTP Amplification": 4,
+    "DDoS/SSDP Amplification": 4, "DDoS/UDP Flood": 4, "DDoS/SNMP Amplification": 4,
+    # PortScan — 侦察阶段
+    "PortScan": 2, "PortScan/SYN Scan": 2, "PortScan/FIN Scan": 2,
+    "PortScan/NULL Scan": 3, "PortScan/XMAS Scan": 3, "PortScan/UDP Scan": 2,
+    "PortScan/RST Scan": 2,
+    # BruteForce — 凭据攻击
+    "BruteForce/SSH": 4, "BruteForce/FTP": 3, "BruteForce/RDP": 4,
+    "BruteForce/MySQL": 4, "BruteForce/Telnet": 3, "BruteForce/SMTP": 3,
+    "BruteForce/PostgreSQL": 4,
+    # WebAttack — Web应用攻击
+    "WebAttack/SQL Injection": 5, "WebAttack/XSS": 4,
+    "WebAttack/Path Traversal": 4, "WebAttack/Command Injection": 5,
+    "WebAttack/CSRF": 3,
+    # Infiltration — 渗透入侵
+    "Infiltration/Reverse Shell": 5, "Infiltration/Data Exfiltration": 5,
+    "Infiltration/Covert Channel": 4, "Infiltration/Lateral Movement": 5,
+    # Bot — 僵尸网络
+    "Bot/C&C Communication": 5, "Bot/Heartbeat": 4,
+    "Bot/DNS Tunnel": 4, "Bot/IRC": 4, "Bot/Beacon": 4,
+}
+
+# ========== 攻击类型 → 受影响进程链和文件（基于真实攻击行为分析） ==========
+ATTACK_CONTEXT = {
+    # DoS 攻击 — 影响网络服务进程
+    "DoS/SYN Flood":      {"process": ["iptables", "nginx", "kernel"], "file": "/var/log/syslog"},
+    "DoS/UDP Flood":      {"process": ["iptables", "kernel"], "file": "/var/log/syslog"},
+    "DoS/ICMP Flood":     {"process": ["kernel", "iptables"], "file": "/var/log/kern.log"},
+    "DoS/Slowloris":      {"process": ["nginx", "apache2"], "file": "/var/log/nginx/access.log"},
+    "DoS/R.U.D.Y.":       {"process": ["nginx", "apache2"], "file": "/var/log/nginx/access.log"},
+    "DoS/TCP RST Flood":  {"process": ["iptables", "kernel"], "file": "/var/log/syslog"},
+    "DoS/HTTP Flood":     {"process": ["nginx", "php-fpm"], "file": "/var/log/nginx/access.log"},
+    "DoS/HTTPS Flood":    {"process": ["nginx"], "file": "/var/log/nginx/access.log"},
+    # DDoS 攻击
+    "DDoS/HTTP Flood":    {"process": ["iptables", "nginx", "php-fpm"], "file": "/var/log/nginx/error.log"},
+    "DDoS/DNS Flood":     {"process": ["named", "iptables"], "file": "/var/log/named/query.log"},
+    "DDoS/NTP Amplification": {"process": ["ntpd", "iptables"], "file": "/var/log/syslog"},
+    "DDoS/SSDP Amplification": {"process": ["kernel", "iptables"], "file": "/var/log/syslog"},
+    "DDoS/UDP Flood":     {"process": ["kernel", "iptables"], "file": "/var/log/syslog"},
+    "DDoS/SNMP Amplification": {"process": ["snmpd", "iptables"], "file": "/var/log/syslog"},
+    # PortScan — 侦察
+    "PortScan":           {"process": ["iptables"], "file": "/var/log/auth.log"},
+    "PortScan/SYN Scan":  {"process": ["iptables", "kernel"], "file": "/var/log/auth.log"},
+    "PortScan/FIN Scan":  {"process": ["iptables", "kernel"], "file": "/var/log/auth.log"},
+    "PortScan/NULL Scan": {"process": ["iptables", "kernel"], "file": "/var/log/auth.log"},
+    "PortScan/XMAS Scan": {"process": ["iptables", "kernel"], "file": "/var/log/auth.log"},
+    "PortScan/UDP Scan":  {"process": ["iptables"], "file": "/var/log/auth.log"},
+    "PortScan/RST Scan":  {"process": ["iptables"], "file": "/var/log/auth.log"},
+    # BruteForce — 暴力破解
+    "BruteForce/SSH":     {"process": ["sshd", "pam_unix"], "file": "/var/log/auth.log"},
+    "BruteForce/FTP":     {"process": ["vsftpd"], "file": "/var/log/vsftpd.log"},
+    "BruteForce/RDP":     {"process": ["xrdp", "xrdp-sesman"], "file": "/var/log/xrdp-sesman.log"},
+    "BruteForce/MySQL":   {"process": ["mysqld"], "file": "/var/log/mysql/error.log"},
+    "BruteForce/Telnet":  {"process": ["telnetd", "login"], "file": "/var/log/auth.log"},
+    "BruteForce/SMTP":    {"process": ["postfix", "smtpd"], "file": "/var/log/mail.log"},
+    "BruteForce/PostgreSQL": {"process": ["postgres"], "file": "/var/log/postgresql/postgresql.log"},
+    # WebAttack — Web应用攻击
+    "WebAttack/SQL Injection":    {"process": ["nginx", "php-fpm", "mysqld"], "file": "/var/lib/mysql/net_safe/users.ibd"},
+    "WebAttack/XSS":              {"process": ["nginx", "node"], "file": "/var/log/nginx/access.log"},
+    "WebAttack/Path Traversal":   {"process": ["nginx", "php-fpm"], "file": "/etc/passwd"},
+    "WebAttack/Command Injection": {"process": ["nginx", "php-fpm", "bash"], "file": "/etc/shadow"},
+    "WebAttack/CSRF":             {"process": ["nginx", "php-fpm"], "file": "/var/log/nginx/access.log"},
+    # Infiltration — 渗透
+    "Infiltration/Reverse Shell":   {"process": ["bash", "nc", "python3"], "file": "/tmp/.reverse_shell"},
+    "Infiltration/Data Exfiltration": {"process": ["curl", "tar", "bash"], "file": "/etc/shadow"},
+    "Infiltration/Covert Channel":  {"process": ["ssh", "stunnel"], "file": "/tmp/.covert_data"},
+    "Infiltration/Lateral Movement": {"process": ["smbclient", "psexec", "bash"], "file": "/var/log/samba/log.smbd"},
+    # Bot — 僵尸网络
+    "Bot/C&C Communication": {"process": ["python3", "curl"], "file": "/tmp/.bot_config"},
+    "Bot/Heartbeat":         {"process": ["crond", "python3"], "file": "/tmp/.heartbeat"},
+    "Bot/DNS Tunnel":        {"process": ["iodine", "dnscat2"], "file": "/var/log/named/query.log"},
+    "Bot/IRC":               {"process": ["irssi", "python3"], "file": "/tmp/.irc_bot"},
+    "Bot/Beacon":            {"process": ["python3", "wget"], "file": "/tmp/.beacon"},
+}
+
+
+def calculate_rule_threat_level(attack_class, detail_str):
+    """
+    基于规则引擎检测结果计算威胁等级
+    算法: base_severity + intensity_bonus
+    - base_severity: 攻击类型固有危险等级 (ATTACK_BASE_SEVERITY)
+    - intensity_bonus: 检测强度超阈值倍数加成 (+0~+2)
+    最终值 clamp 到 [1, 5]
+    """
+    base = ATTACK_BASE_SEVERITY.get(attack_class, 3)
+
+    # 从 detail 字符串中提取检测到的数量（如 "550个SYN→端口80/10s"）
+    intensity_bonus = 0
+    try:
+        count_match = re.search(r'(\d+)', detail_str)
+        if count_match:
+            count = int(count_match.group(1))
+            # 根据攻击类型获取对应阈值
+            if "SYN" in attack_class or "RST" in attack_class:
+                threshold = RULE_SYNFLOOD_THRESHOLD
+            elif "UDP" in attack_class or "DNS" in attack_class or "NTP" in attack_class or "SSDP" in attack_class:
+                threshold = RULE_UDPFLOOD_THRESHOLD
+            elif "ICMP" in attack_class:
+                threshold = RULE_ICMPFLOOD_THRESHOLD
+            elif "BruteForce" in attack_class:
+                threshold = RULE_BRUTEFORCE_THRESHOLD
+            elif "PortScan" in attack_class:
+                threshold = RULE_PORTSCAN_THRESHOLD
+            else:
+                threshold = RULE_SUSPICIOUS_THRESHOLD
+
+            ratio = count / max(threshold, 1)
+            if ratio >= 10:
+                intensity_bonus = 2
+            elif ratio >= 5:
+                intensity_bonus = 1
+    except Exception:
+        pass
+
+    return max(1, min(5, base + intensity_bonus))
+
+
+def calculate_model_threat_level(attack_prob, confidence, real_score, attack_class):
+    """
+    基于 TransEC-GAN 模型输出计算威胁等级
+    算法: 综合 attack_prob(非Benign概率) + confidence(分类置信度) + 攻击类型基础等级
+    - attack_prob > 0.95 且 confidence > 0.85 → base + 1 (严重)
+    - attack_prob > 0.90 且 confidence > 0.75 → base (高风险)
+    - attack_prob > 0.85 → base - 1 (中风险)
+    - 其他 → 2 (低风险)
+    """
+    base = ATTACK_BASE_SEVERITY.get(attack_class, 3)
+
+    if attack_prob > 0.95 and confidence > 0.85:
+        level = base + 1
+    elif attack_prob > 0.90 and confidence > 0.75:
+        level = base
+    elif attack_prob > 0.85:
+        level = max(base - 1, 2)
+    else:
+        level = 2
+
+    return max(1, min(5, level))
+
+
+def get_attack_context(attack_class):
+    """
+    获取攻击类型对应的受影响进程链和文件
+    基于真实攻击行为分析，每种攻击类型对应其实际影响的系统进程和文件
+    返回: (affected_process_json_str, affected_file_str)
+    """
+    ctx = ATTACK_CONTEXT.get(attack_class)
+    if ctx:
+        return json.dumps(ctx["process"]), ctx["file"]
+
+    # 未知攻击类型 — 根据大类推断
+    for category, default_ctx in [
+        ("DoS", {"process": ["iptables", "kernel"], "file": "/var/log/syslog"}),
+        ("DDoS", {"process": ["iptables", "kernel"], "file": "/var/log/syslog"}),
+        ("PortScan", {"process": ["iptables"], "file": "/var/log/auth.log"}),
+        ("BruteForce", {"process": ["sshd"], "file": "/var/log/auth.log"}),
+        ("WebAttack", {"process": ["nginx", "php-fpm"], "file": "/var/log/nginx/access.log"}),
+        ("Infiltration", {"process": ["bash"], "file": "/var/log/auth.log"}),
+        ("Bot", {"process": ["python3"], "file": "/tmp/.bot_config"}),
+    ]:
+        if category in attack_class:
+            return json.dumps(default_ctx["process"]), default_ctx["file"]
+
+    return json.dumps(["unknown"]), "/var/log/syslog"
 
 # ========== 规则引擎状态 ==========
 portscan_tracker = defaultdict(lambda: deque())
@@ -381,13 +556,15 @@ def packet_callback(packet):
             alert_history[alert_key] = now
             stats["attack_count"] += 1
 
+            threat_level = calculate_rule_threat_level(attack_class, alert['detail'])
+            level_label = {5: "严重", 4: "高风险", 3: "中风险", 2: "低风险", 1: "信息"}.get(threat_level, "未知")
             logger.info(
                 f"{COLORS['red']}🔴 {attack_class} "
                 f"| {src_ip}:{src_port} → {dst_ip}:{dst_port} "
-                f"| {alert['detail']}"
+                f"| {alert['detail']} | 威胁等级={level_label}({threat_level})"
                 f"{COLORS['reset']}"
             )
-            threat_level = 3 if "DoS" in attack_class or "DDoS" in attack_class else 2
+            affected_process, affected_file = get_attack_context(attack_class)
             proto_name = "TCP" if proto == 6 else ("UDP" if proto == 17 else ("ICMP" if proto == 1 else str(proto)))
             payload = {
                 "threatId": f"NIDS-{int(time.time()*1000)}",
@@ -397,6 +574,8 @@ def packet_callback(packet):
                 "sourceIp": src_ip,
                 "targetIp": dst_ip,
                 "attackType": attack_class,
+                "affectedProcess": affected_process,
+                "affectedFile": affected_file,
                 "message": f"[{proto_name}] {src_ip}:{src_port} → {dst_ip}:{dst_port} | {alert['detail']}",
                 "status": "未处理",
             }
@@ -410,21 +589,27 @@ def packet_callback(packet):
         if alert_key not in alert_history or (now - alert_history[alert_key]) >= ALERT_COOLDOWN:
             alert_history[alert_key] = now
             stats["attack_count"] += 1
+            real_score = model_result["real_score"]
+            threat_level = calculate_model_threat_level(attack_prob, confidence, real_score, attack_class)
+            affected_process, affected_file = get_attack_context(attack_class)
+            level_label = {5: "严重", 4: "高风险", 3: "中风险", 2: "低风险", 1: "信息"}.get(threat_level, "未知")
             logger.info(
                 f"{COLORS['yellow']}🟡 TransEC-GAN模型检测: {attack_class} "
                 f"| {src_ip}:{src_port} → {dst_ip}:{dst_port} "
-                f"| 攻击概率={attack_prob:.1%} 置信度={confidence:.1%}"
+                f"| 攻击概率={attack_prob:.1%} 置信度={confidence:.1%} 威胁等级={level_label}({threat_level})"
                 f"{COLORS['reset']}"
             )
             proto_name = "TCP" if proto == 6 else ("UDP" if proto == 17 else ("ICMP" if proto == 1 else str(proto)))
             payload = {
                 "threatId": f"NIDS-GAN-{int(time.time()*1000)}",
-                "threatLevel": 2,
+                "threatLevel": threat_level,
                 "impactScope": f"{src_ip}:{src_port} -> {dst_ip}:{dst_port} | TransEC-GAN:{attack_class}",
                 "occurTime": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "sourceIp": src_ip,
                 "targetIp": dst_ip,
                 "attackType": attack_class,
+                "affectedProcess": affected_process,
+                "affectedFile": affected_file,
                 "message": f"[TransEC-GAN-{proto_name}] {src_ip}:{src_port} → {dst_ip}:{dst_port} | {attack_class} (prob={attack_prob:.1%})",
                 "status": "未处理",
             }

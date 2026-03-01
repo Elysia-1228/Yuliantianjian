@@ -594,10 +594,14 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                       }`}
                     >
                       <div className="flex items-center gap-3 mb-1.5">
-                        <div className={`text-xs font-bold w-24 transition-all ${
+                        <div className={`text-xs font-bold w-16 shrink-0 whitespace-nowrap transition-all ${
                           isHovered ? 'text-cyan-300 scale-105' : 'text-slate-400'
                         }`}>
-                          {group.name}
+                          {group.key === 'graph_structure' ? '图结构' :
+                           group.key === 'node' ? '节点' :
+                           group.key === 'edge' ? '边' :
+                           group.key === 'sequence' ? '序列' :
+                           group.key === 'semantic' ? '语义' : group.name}
                         </div>
                         <div className="flex-1 flex gap-1">
                           {groupVector.map((val, idx) => {
