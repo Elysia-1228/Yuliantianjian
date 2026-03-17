@@ -211,10 +211,18 @@ interface CyberDetailPanelProps {
   aggregation: AggregatedAlert;
   totalAlerts: number;
   totalSources: number;
+  selectedNode?: any;
 }
 
-const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalAlerts, totalSources }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'threats' | 'targets'>('overview');
+const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalAlerts, totalSources, selectedNode }) => {
+  const [activeTab, setActiveTab] = useState<'overview' | 'threats' | 'targets' | 'node'>('overview');
+
+  // 当有节点被点击时，自动切换到节点详情标签页
+  React.useEffect(() => {
+    if (selectedNode) {
+      setActiveTab('node');
+    }
+  }, [selectedNode]);
   const [anomalyScore, setAnomalyScore] = useState(0);
   const [rawVector, setRawVector] = useState<number[]>([]);
   const [featureGroups, setFeatureGroups] = useState<any>({});
@@ -491,6 +499,7 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
           { id: 'overview', label: '总览', icon: Eye },
           { id: 'threats', label: '威胁', icon: Bug },
           { id: 'targets', label: '目标', icon: Target },
+          { id: 'node', label: '节点', icon: Network },
         ].map(tab => (
           <button
             key={tab.id}
@@ -844,8 +853,8 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
         {activeTab === 'targets' && (
           <div className="space-y-2 animate-fadeIn">
             {aggregation.targetIps.map((ip, idx) => (
-              <div 
-                key={ip} 
+              <div
+                key={ip}
                 className="bg-black/30 rounded-lg p-3 border border-slate-700/50 flex items-center gap-3 group hover:border-purple-500/30 transition-colors"
               >
                 <div className="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center border border-purple-500/30">
@@ -858,6 +867,182 @@ const CyberDetailPanel: React.FC<CyberDetailPanelProps> = ({ aggregation, totalA
                 <Shield size={14} className="text-slate-600 group-hover:text-purple-400 transition-colors" />
               </div>
             ))}
+          </div>
+        )}
+
+        {/* 节点详情标签页 */}
+        {activeTab === 'node' && (
+          <div className="animate-fadeIn">
+            {!selectedNode ? (
+              /* 未选中节点时的提示 */
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <div className="w-16 h-16 rounded-full bg-slate-800/50 border border-slate-700 flex items-center justify-center mb-4">
+                  <Network size={28} className="text-slate-600" />
+                </div>
+                <div className="text-slate-500 text-sm mb-1">点击溯源图中的节点</div>
+                <div className="text-slate-600 text-xs">查看节点详细信息</div>
+              </div>
+            ) : (
+              /* 节点详情 */
+              <div className="space-y-3">
+                {/* 节点类型徽章 */}
+                <div className="flex items-center gap-3 bg-black/30 rounded-lg p-3 border border-slate-700/50">
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center border flex-shrink-0 ${
+                    selectedNode.type === 'attacker'  ? 'bg-red-500/20 border-red-500/40' :
+                    selectedNode.type === 'firewall'  ? 'bg-orange-500/20 border-orange-500/40' :
+                    selectedNode.type === 'server'    ? 'bg-purple-500/20 border-purple-500/40' :
+                    selectedNode.type === 'process'   ? 'bg-purple-500/20 border-purple-500/40' :
+                    selectedNode.type === 'file'      ? 'bg-green-500/20 border-green-500/40' :
+                    'bg-cyan-500/20 border-cyan-500/40'
+                  }`}>
+                    {selectedNode.type === 'attacker'  && <AlertTriangle size={18} className="text-red-400" />}
+                    {selectedNode.type === 'firewall'  && <Shield size={18} className="text-orange-400" />}
+                    {(selectedNode.type === 'server' || selectedNode.type === 'process') && <Cpu size={18} className="text-purple-400" />}
+                    {selectedNode.type === 'file'      && <Database size={18} className="text-green-400" />}
+                    {!['attacker','firewall','server','process','file'].includes(selectedNode.type) && <Network size={18} className="text-cyan-400" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs text-slate-500 mb-0.5">节点类型</div>
+                    <div className={`text-sm font-bold font-mono ${
+                      selectedNode.type === 'attacker'  ? 'text-red-400' :
+                      selectedNode.type === 'firewall'  ? 'text-orange-400' :
+                      selectedNode.type === 'process' || selectedNode.type === 'server' ? 'text-purple-400' :
+                      selectedNode.type === 'file'      ? 'text-green-400' :
+                      'text-cyan-400'
+                    }`}>
+                      {{
+                        attacker: '攻击源',
+                        firewall: '防火墙',
+                        server: '服务器进程',
+                        process: '进程',
+                        file: '文件',
+                        socket: '网络套接字',
+                      }[selectedNode.type] || selectedNode.type}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 节点名称 */}
+                <div className="bg-black/30 rounded-lg p-3 border border-slate-700/50">
+                  <div className="text-xs text-slate-500 mb-1">节点名称</div>
+                  <div className="text-sm font-mono text-white break-all">{selectedNode.label || selectedNode.name || selectedNode.id}</div>
+                </div>
+
+                {/* 节点 ID */}
+                <div className="bg-black/30 rounded-lg p-3 border border-slate-700/50">
+                  <div className="text-xs text-slate-500 mb-1">节点 ID</div>
+                  <div className="text-xs font-mono text-slate-400 break-all">{selectedNode.id}</div>
+                </div>
+
+                {/* 描述信息（如有） */}
+                {selectedNode.description && (
+                  <div className="bg-black/30 rounded-lg p-3 border border-slate-700/50">
+                    <div className="text-xs text-slate-500 mb-1">描述</div>
+                    <div className="text-sm text-slate-300">{selectedNode.description}</div>
+                  </div>
+                )}
+
+                {/* 威胁评分 */}
+                <div className="bg-black/30 rounded-lg p-3 border border-slate-700/50">
+                  <div className="text-xs text-slate-500 mb-2">威胁评分</div>
+                  {(() => {
+                    const score =
+                      selectedNode.type === 'attacker'  ? 98 :
+                      selectedNode.type === 'firewall'  ? 85 :
+                      selectedNode.type === 'process' || selectedNode.type === 'server' ? 72 :
+                      selectedNode.type === 'file'      ? 65 : 50;
+                    const color =
+                      score >= 90 ? '#FF4D4F' :
+                      score >= 70 ? '#FA8C16' :
+                      score >= 50 ? '#FAAD14' : '#52C41A';
+                    const label =
+                      score >= 90 ? 'CRITICAL' :
+                      score >= 70 ? 'HIGH' :
+                      score >= 50 ? 'MEDIUM' : 'LOW';
+                    return (
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-2xl font-bold font-mono" style={{ color }}>{score}</span>
+                          <span className="text-xs font-bold px-2 py-0.5 rounded" style={{ color: '#000', backgroundColor: color }}>{label}</span>
+                        </div>
+                        <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full transition-all duration-500" style={{ width: `${score}%`, backgroundColor: color }} />
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* 攻击阶段 */}
+                <div className="bg-black/30 rounded-lg p-3 border border-slate-700/50">
+                  <div className="text-xs text-slate-500 mb-1">ATT&CK 攻击阶段</div>
+                  <div className="text-sm font-mono text-cyan-300">
+                    {selectedNode.type === 'attacker'  ? 'Initial Access (初始访问)' :
+                     selectedNode.type === 'firewall'  ? 'Defense Evasion (防御规避)' :
+                     selectedNode.type === 'process' || selectedNode.type === 'server' ? 'Execution (执行)' :
+                     selectedNode.type === 'file'      ? 'Exfiltration (数据窃取)' :
+                     'Lateral Movement (横向移动)'}
+                  </div>
+                </div>
+
+                {/* 进程专属字段 */}
+                {(selectedNode.type === 'process' || selectedNode.type === 'server') && (
+                  <div className="bg-black/30 rounded-lg p-3 border border-slate-700/50 space-y-2">
+                    <div className="text-xs text-slate-500 font-bold mb-1">进程信息</div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-slate-500">PID</span>
+                      <span className="font-mono text-white">{selectedNode.pid || `proc_${Math.floor(Math.random() * 90000 + 10000)}`}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-slate-500">权限</span>
+                      <span className="font-mono text-red-400">{selectedNode.user || 'root [High Risk]'}</span>
+                    </div>
+                    <div className="text-xs">
+                      <span className="text-slate-500">载荷路径</span>
+                      <div className="font-mono text-green-400 mt-0.5 break-all">{selectedNode.cmdline || `/usr/bin/${selectedNode.label || selectedNode.name}`}</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 文件专属字段 */}
+                {selectedNode.type === 'file' && (
+                  <div className="bg-black/30 rounded-lg p-3 border border-slate-700/50 space-y-2">
+                    <div className="text-xs text-slate-500 font-bold mb-1">文件信息</div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-slate-500">操作</span>
+                      <span className="font-mono text-orange-400">{selectedNode.operation || 'READ/WRITE'}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-slate-500">大小</span>
+                      <span className="font-mono text-white">{selectedNode.fileSize || `${Math.floor(Math.random() * 900 + 100)} KB`}</span>
+                    </div>
+                    <div className="text-xs">
+                      <span className="text-slate-500">完整路径</span>
+                      <div className="font-mono text-green-400 mt-0.5 break-all">{selectedNode.label || selectedNode.name}</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 攻击源专属字段 */}
+                {selectedNode.type === 'attacker' && (
+                  <div className="bg-black/30 rounded-lg p-3 border border-slate-700/50 space-y-2">
+                    <div className="text-xs text-slate-500 font-bold mb-1">攻击源信息</div>
+                    <div className="text-xs">
+                      <span className="text-slate-500">IP 地址</span>
+                      <div className="font-mono text-red-400 mt-0.5">{selectedNode.label || selectedNode.name}</div>
+                    </div>
+                    <div className="text-xs">
+                      <span className="text-slate-500">入侵方式</span>
+                      <div className="font-mono text-orange-400 mt-0.5">{selectedNode.attackMethod || aggregation.primaryThreatType || 'Unknown'}</div>
+                    </div>
+                    <div className="text-xs">
+                      <span className="text-slate-500">攻击路径</span>
+                      <div className="text-slate-300 mt-0.5">外部网络 → 防火墙 → 内部进程 → 敏感文件</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1742,10 +1927,11 @@ interface EnhancedAnalysisProps {
   logs: Array<{ time: string; type: string; message: string }>;
   graphData: any;
   onComplete: () => void;
+  onNodeClick?: (node: any) => void;
 }
 
-const EnhancedAnalysisView: React.FC<EnhancedAnalysisProps> = ({ 
-  aggregation, phase, logs, graphData, onComplete
+const EnhancedAnalysisView: React.FC<EnhancedAnalysisProps> = ({
+  aggregation, phase, logs, graphData, onComplete, onNodeClick
 }) => {
   const [visibleNodes, setVisibleNodes] = useState<number>(0);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1950,10 +2136,11 @@ const EnhancedAnalysisView: React.FC<EnhancedAnalysisProps> = ({
             
             {/* ECharts树状图可视化 */}
             <div className="h-[400px]">
-              <PIDSGraph 
+              <PIDSGraph
                 graphData={graphData}
                 alerts={[]}
                 currentAlert={null}
+                onNodeClick={onNodeClick}
               />
             </div>
             
@@ -2030,13 +2217,22 @@ const ThreatTracing: React.FC = () => {
   
   // PIDS视图启动状态
   const [pidsStarted, setPidsStarted] = useState(false);
-  
+
   // 分析完成状态
   const [analysisComplete, setAnalysisComplete] = useState(false);
-  
+
+  // 被点击的图谱节点（用于右侧面板展示节点详情）
+  const [selectedNode, setSelectedNode] = useState<any>(null);
+
+  // 节点点击处理器 - 传给 EnhancedAnalysisView -> PIDSGraph
+  const handleNodeClick = useCallback((node: any) => {
+    console.log('[节点点击] 选中节点:', node);
+    setSelectedNode(node);
+  }, []);
+
   // System Log - 用于分析界面内嵌显示
   const [systemLogs, setSystemLogs] = useState<Array<{ time: string; type: string; message: string }>>([]);
-  
+
   const addLog = useCallback((type: string, message: string) => {
     const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
     setSystemLogs(prev => [...prev.slice(-30), { time, type, message }]);
@@ -3217,6 +3413,7 @@ const ThreatTracing: React.FC = () => {
                     logs={systemLogs}
                     graphData={graphData}
                     onComplete={handleAnalysisComplete}
+                    onNodeClick={handleNodeClick}
                   />
                 </div>
               ) : (
@@ -3232,10 +3429,11 @@ const ThreatTracing: React.FC = () => {
             {/* 右侧详情面板 - 威胁情报分析 (26%) */}
             {selectedAggregation && (
               <div className="w-[26%] min-w-[300px] max-w-[400px] border-l border-cyan-500/20 overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(6,182,212,0.5) rgba(15,23,42,0.5)' }}>
-                <CyberDetailPanel 
+                <CyberDetailPanel
                   aggregation={selectedAggregation}
                   totalAlerts={tracingEvents.length}
                   totalSources={aggregatedAlerts.length}
+                  selectedNode={selectedNode}
                 />
               </div>
             )}

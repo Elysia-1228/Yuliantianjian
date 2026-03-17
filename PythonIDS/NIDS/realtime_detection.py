@@ -48,17 +48,18 @@ CLEAN_INTERVAL = 30
 ALERT_COOLDOWN = 10
 
 # ========== 规则引擎配置 ==========
-RULE_PORTSCAN_THRESHOLD = 15
+# 阈值已调高，防止正常流量（浏览器/IDE/系统服务）产生误报
+RULE_PORTSCAN_THRESHOLD = 40       # 30s内扫描40个不同端口才触发（原15，太低误报多）
 RULE_PORTSCAN_WINDOW = 30
-RULE_SYNFLOOD_THRESHOLD = 100
+RULE_SYNFLOOD_THRESHOLD = 300      # 10s内300个SYN才触发（原100，正常服务负载可达）
 RULE_SYNFLOOD_WINDOW = 10
-RULE_BRUTEFORCE_THRESHOLD = 8
+RULE_BRUTEFORCE_THRESHOLD = 20     # 30s内20次连接才触发（原8，TCP重传/重连易误报）
 RULE_BRUTEFORCE_WINDOW = 30
-RULE_UDPFLOOD_THRESHOLD = 500
+RULE_UDPFLOOD_THRESHOLD = 1000     # 10s内1000个UDP才触发（原500）
 RULE_UDPFLOOD_WINDOW = 10
-RULE_ICMPFLOOD_THRESHOLD = 50
+RULE_ICMPFLOOD_THRESHOLD = 100     # 10s内100个ICMP才触发（原50，ping普通测试易误报）
 RULE_ICMPFLOOD_WINDOW = 10
-RULE_SUSPICIOUS_THRESHOLD = 6
+RULE_SUSPICIOUS_THRESHOLD = 15    # 30s内15次连接才触发（原6，过于敏感）
 RULE_SUSPICIOUS_WINDOW = 30
 
 # BruteForce 服务端口 → 名称
@@ -69,14 +70,17 @@ BRUTEFORCE_PORT_MAP = {
 }
 
 # 可疑端口 → 名称（WebAttack / Infiltration / Bot）
+# 注意：只保留攻击模拟专用端口，移除 8443 等正常业务端口防止误报
 SUSPICIOUS_PORT_MAP = {
     8083: "WebAttack/SQL Injection", 8084: "WebAttack/XSS",
     8085: "WebAttack/Path Traversal", 8086: "WebAttack/Command Injection",
     8087: "WebAttack/CSRF",
-    4444: "Infiltration/Reverse Shell", 5900: "Infiltration/Data Exfiltration",
+    4444: "Infiltration/Reverse Shell",  # nc反弹Shell常用端口
     4445: "Infiltration/Covert Channel", 445: "Infiltration/Lateral Movement",
-    8443: "Bot/C&C Communication", 8444: "Bot/Heartbeat",
+    # 8443 已移除：该端口是HTTPS常用备用端口，正常业务大量使用，检测会产生大量误报
+    8444: "Bot/Heartbeat",
     6667: "Bot/IRC", 8445: "Bot/Beacon",
+    # 5900 已移除：VNC正常远程桌面端口
 }
 
 # SYN Flood 端口 → 名称
@@ -417,11 +421,8 @@ def rule_engine_check(packet, src_ip, dst_ip, src_port, dst_port, proto):
                 if r:
                     r["type"] = "PortScan/FIN Scan" if is_fin else "PortScan/RST Scan"
                     alerts.append(r)
-            if is_rst:
-                r = rule_check_synflood(dst_ip, dst_port, now)
-                if r:
-                    r["type"] = "DoS/TCP RST Flood"
-                    alerts.append(r)
+            # 注意：RST包不再触发SYN Flood计数器
+            # 服务器在正常拒绝连接时会发RST，若用RST计数会把服务器自身误报为DoS攻击者
     elif proto == 17:
         r = rule_check_udpflood(dst_ip, dst_port, now)
         if r: alerts.append(r)
@@ -473,7 +474,7 @@ def model_classify(flow_key):
         "attack_prob": attack_prob,
         "benign_prob": benign_prob,
         "real_score": real_prob,
-        "is_attack": attack_prob > 0.85 and real_prob > ANOMALY_THRESHOLD,
+        "is_attack": attack_prob > 0.92 and real_prob > ANOMALY_THRESHOLD and confidence > 0.80,
     }
 
 
@@ -585,7 +586,17 @@ def packet_callback(packet):
         attack_class = model_result["attack_class"]
         confidence = model_result["confidence"]
         attack_prob = model_result["attack_prob"]
-        alert_key = (src_ip, dst_ip, f"TransEC-GAN-{attack_class}")
+        # 从 FlowStats 取流的原始发起方，避免因响应包触发告警时 src/dst 方向反转
+        flow = flows.get(flow_key)
+        if flow and flow["stats"]:
+            alert_src_ip = flow["stats"].src_ip
+            alert_src_port = flow["stats"].src_port
+            alert_dst_ip = flow["stats"].dst_ip
+            alert_dst_port = flow["stats"].dst_port
+        else:
+            alert_src_ip, alert_src_port = src_ip, src_port
+            alert_dst_ip, alert_dst_port = dst_ip, dst_port
+        alert_key = (alert_src_ip, alert_dst_ip, f"MODEL-{attack_class}")
         if alert_key not in alert_history or (now - alert_history[alert_key]) >= ALERT_COOLDOWN:
             alert_history[alert_key] = now
             stats["attack_count"] += 1
@@ -594,23 +605,23 @@ def packet_callback(packet):
             affected_process, affected_file = get_attack_context(attack_class)
             level_label = {5: "严重", 4: "高风险", 3: "中风险", 2: "低风险", 1: "信息"}.get(threat_level, "未知")
             logger.info(
-                f"{COLORS['yellow']}🟡 TransEC-GAN模型检测: {attack_class} "
-                f"| {src_ip}:{src_port} → {dst_ip}:{dst_port} "
+                f"{COLORS['yellow']}🟡 AI模型检测: {attack_class} "
+                f"| {alert_src_ip}:{alert_src_port} → {alert_dst_ip}:{alert_dst_port} "
                 f"| 攻击概率={attack_prob:.1%} 置信度={confidence:.1%} 威胁等级={level_label}({threat_level})"
                 f"{COLORS['reset']}"
             )
             proto_name = "TCP" if proto == 6 else ("UDP" if proto == 17 else ("ICMP" if proto == 1 else str(proto)))
             payload = {
-                "threatId": f"NIDS-GAN-{int(time.time()*1000)}",
+                "threatId": f"NIDS-{int(time.time()*1000)}",
                 "threatLevel": threat_level,
-                "impactScope": f"{src_ip}:{src_port} -> {dst_ip}:{dst_port} | TransEC-GAN:{attack_class}",
+                "impactScope": f"{alert_src_ip}:{alert_src_port} -> {alert_dst_ip}:{alert_dst_port} | {attack_class}",
                 "occurTime": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "sourceIp": src_ip,
-                "targetIp": dst_ip,
+                "sourceIp": alert_src_ip,
+                "targetIp": alert_dst_ip,
                 "attackType": attack_class,
                 "affectedProcess": affected_process,
                 "affectedFile": affected_file,
-                "message": f"[TransEC-GAN-{proto_name}] {src_ip}:{src_port} → {dst_ip}:{dst_port} | {attack_class} (prob={attack_prob:.1%})",
+                "message": f"[AI-{proto_name}] {alert_src_ip}:{alert_src_port} → {alert_dst_ip}:{alert_dst_port} | {attack_class} (概率={attack_prob:.1%})",
                 "status": "未处理",
             }
             send_alert(flow_key, payload)
@@ -645,23 +656,19 @@ def periodic_cleanup():
 # ========== 获取抓包接口 ==========
 
 def get_sniff_ifaces():
-    """获取抓包接口列表：WLAN + Loopback（解决Windows自攻击走loopback的问题）"""
+    """获取抓包接口列表：仅监听真实网络接口，不监听 Loopback
+
+    说明：quick_attack.py 使用伪造源IP通过 Scapy send() 发包，
+    这些包会经过真实网卡（WLAN/以太网）出去再回来，NIDS 从网卡抓即可。
+    监听 Loopback 会同时抓到本机内部流量（如 Java 后端 HTTP 请求、本机服务通信），
+    导致没有攻击时也产生大量误报。
+    """
     from ids_common import get_wlan_interface
     ifaces = []
-    # WLAN接口
+    # 只监听 WLAN/以太网接口，不监听 Loopback
     wlan = get_wlan_interface()
     if wlan:
         ifaces.append(wlan)
-    # Npcap Loopback（Windows自攻击流量走这里）
-    try:
-        all_ifaces = get_if_list()
-        for iface in all_ifaces:
-            iface_lower = str(iface).lower()
-            if "loopback" in iface_lower or "npcap" in iface_lower:
-                ifaces.append(iface)
-                break
-    except Exception:
-        pass
     return ifaces if ifaces else None
 
 

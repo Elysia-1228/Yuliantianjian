@@ -135,88 +135,88 @@ const convertToGraphData = (nodes: any[], edges: any[]) => {
   // 使用去重后的节点和边
   nodes = uniqueNodes;
   edges = deduplicatedEdges;
-  
+
   // 🌳 优化的树状布局算法：紧凑布局，减小间距
   const START_X = 80;
   const LAYER_SPACING = 200;  // 层级间距（从左到右）- 减小20%
   const MIN_NODE_SPACING = 50;  // 最小节点间距 - 减小50%
   const MAX_CANVAS_HEIGHT = 800;  // 最大画布高度 - 减小33%
   const DEFAULT_CANVAS_HEIGHT = 500;  // 默认画布高度 - 减小17%
-  
+
   // 构建父子关系映射
   const childrenMap: Record<string, string[]> = {};
   const parentMap: Record<string, string> = {};
   nodes.forEach(n => childrenMap[n.id] = []);
-  
+
   edges.forEach((e: any) => {
     if (!childrenMap[e.source]) childrenMap[e.source] = [];
     childrenMap[e.source].push(e.target);
     parentMap[e.target] = e.source;
   });
-  
+
   // 找到根节点（没有父节点的节点）
   const roots = nodes.filter((n: any) => !parentMap[n.id]);
   console.log('🌳 找到根节点:', roots.map(r => r.id));
-  
+
   // BFS计算每个节点的层级
   const levels: Record<string, number> = {};
   const queue: Array<{id: string, level: number}> = roots.map(r => ({id: r.id, level: 0}));
   let maxLevel = 0;
-  
+
   while (queue.length > 0) {
     const {id, level} = queue.shift()!;
     levels[id] = level;
     maxLevel = Math.max(maxLevel, level);
-    
+
     (childrenMap[id] || []).forEach(childId => {
       queue.push({id: childId, level: level + 1});
     });
   }
-  
+
   // 按层级分组节点
   const nodesByLevel: Record<number, any[]> = {};
   for (let i = 0; i <= maxLevel; i++) {
     nodesByLevel[i] = [];
   }
-  
+
   nodes.forEach((node: any) => {
     const level = levels[node.id] ?? maxLevel;
     nodesByLevel[level].push(node);
   });
-  
+
   console.log('🌳 层级分布:', Object.entries(nodesByLevel).map(([level, nodes]) => `层${level}: ${nodes.length}个节点`));
-  
+
   // 🔥 动态计算画布高度和节点间距
   const maxNodesInLevel = Math.max(...Object.values(nodesByLevel).map(n => n.length));
   const requiredHeight = maxNodesInLevel * MIN_NODE_SPACING;
   const CANVAS_HEIGHT = Math.min(Math.max(requiredHeight, DEFAULT_CANVAS_HEIGHT), MAX_CANVAS_HEIGHT);
   const NODE_SPACING = Math.max(MIN_NODE_SPACING, CANVAS_HEIGHT / (maxNodesInLevel + 1));
-  
+
   console.log(`📐 画布高度: ${CANVAS_HEIGHT}px, 节点间距: ${NODE_SPACING}px, 最多节点层: ${maxNodesInLevel}个`);
-  
+
   // 计算每个节点的坐标
   const positions: Record<string, {x: number, y: number}> = {};
-  
+
   for (let level = 0; level <= maxLevel; level++) {
     const nodesInLevel = nodesByLevel[level];
     const x = START_X + level * LAYER_SPACING;
-    
+
     // 🔥 优化：根据该层节点数量动态调整垂直分布
     const levelHeight = nodesInLevel.length * NODE_SPACING;
     const startY = (CANVAS_HEIGHT - levelHeight) / 2 + NODE_SPACING / 2;
-    
+
     nodesInLevel.forEach((node, idx) => {
       const y = nodesInLevel.length === 1 ? CANVAS_HEIGHT / 2 : startY + idx * NODE_SPACING;
       positions[node.id] = { x, y };
       console.log(`  🎯 节点 ${node.id}: 层级${level}, x=${x}, y=${y}`);
     });
   }
-  
+
   // 转换节点格式
   const graphNodes = nodes.map((node) => {
     const baseColor = getNeonColor(node.type || 'process');
     const nodeSymbol = getNodeSymbol(node.type || 'process');
-    
+
     let displayName = node.label || node.id;
     if (node.type === 'process' || node.type === 'server') {
       displayName = node.label || node.name || node.id;
@@ -224,9 +224,9 @@ const convertToGraphData = (nodes: any[], edges: any[]) => {
       const fullPath = node.label || node.id;
       displayName = fullPath.split('/').pop() || fullPath;
     }
-    
+
     const pos = positions[node.id] || { x: 0, y: 0 };
-    
+
     return {
       id: node.id,
       name: displayName,

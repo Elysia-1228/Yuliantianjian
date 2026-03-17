@@ -117,6 +117,23 @@ FrontCode/pnpm-debug.log*
 temp/
 backup/
 
+# Root-level node_modules & dist
+node_modules/
+dist/
+
+# Python __pycache__ (all locations)
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# Large binary/document files (not suitable for plain Git)
+*.docx
+*.xlsx
+*.pptx
+
+# Large log files
+PythonIDS/NIDS/ids_detection.log
+
 # Install Package (Generated Artifact)
 Zhilian_Install_Package/
 
